@@ -24,7 +24,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
     @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws RemoteException, AuthenticationException {
-        throw new UnsupportedOperationException("listGameTypes not implemented yet -- see build-plan.md step 5");
+        throw new UnsupportedOperationException("listGameTypes not implemented yet -- see build-plan.md step 4");
     }
 
     @Override
@@ -52,13 +52,13 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     @Override
     public void resign(String sessionToken, int gameSessionId)
             throws RemoteException, AuthenticationException, NotParticipantException {
-        throw new UnsupportedOperationException("resign not implemented yet -- see build-plan.md step 5");
+        throw new UnsupportedOperationException("resign not implemented yet -- see build-plan.md step 7");
     }
 
     @Override
     public GameStateDTO rematch(String sessionToken, int finishedSessionId)
             throws RemoteException, AuthenticationException, NotParticipantException {
-        throw new UnsupportedOperationException("rematch not implemented yet -- see build-plan.md step 5");
+        throw new UnsupportedOperationException("rematch not implemented yet -- see build-plan.md step 10");
     }
 
     @Override
