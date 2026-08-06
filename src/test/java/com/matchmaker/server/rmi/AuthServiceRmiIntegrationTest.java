@@ -30,35 +30,46 @@ class AuthServiceRmiIntegrationTest {
     }
 
     @AfterEach
-    void tearDownRegistry() throws Exception {
-        registry.unbind("AuthService");
-        UnicastRemoteObject.unexportObject(authServiceImpl, true);
-        UnicastRemoteObject.unexportObject(registry, true);
+    void tearDownRegistry() {
+        if (registry != null) {
+            try { registry.unbind("AuthService"); } catch (Exception ignored) { }
+        }
+        if (authServiceImpl != null) {
+            try { UnicastRemoteObject.unexportObject(authServiceImpl, true); } catch (Exception ignored) { }
+        }
+        if (registry != null) {
+            try { UnicastRemoteObject.unexportObject(registry, true); } catch (Exception ignored) { }
+        }
+    }
+
+    private AuthService lookupStub() throws Exception {
+        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
+        return (AuthService) clientRegistry.lookup("AuthService");
     }
 
     @Test
     void login_throughRealRmiStub_returnsRealResult() throws Exception {
-        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
-        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
+        AuthService stub = lookupStub();
+        assertNotSame(authServiceImpl, stub);
 
         LoginResultDTO result = stub.login("test", "test1234");
 
         assertEquals("test", result.getUser().getUsername());
         assertNotNull(result.getSessionToken());
+
+        assertDoesNotThrow(() -> stub.keepAlive(result.getSessionToken()));
     }
 
     @Test
     void login_withBadCredentials_throwsAuthenticationExceptionAcrossRmi() throws Exception {
-        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
-        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
+        AuthService stub = lookupStub();
 
         assertThrows(AuthenticationException.class, () -> stub.login("test", "wrongpassword"));
     }
 
     @Test
     void register_takenUsername_throwsUsernameTakenExceptionAcrossRmi() throws Exception {
-        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
-        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
+        AuthService stub = lookupStub();
 
         assertThrows(UsernameTakenException.class, () -> stub.register("test", "whatever"));
     }
