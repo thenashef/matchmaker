@@ -69,3 +69,7 @@ CREATE TABLE ChatMessage (
     FOREIGN KEY (SessionID) REFERENCES GameSession(ID),
     FOREIGN KEY (UserID) REFERENCES User(ID)
 );
+
+-- Seed data: one game type so listGameTypes() has something to return out of the box.
+INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols)
+VALUES ('Checkers', 'Classic two-player checkers on an 8x8 board.', 2, 2, 8, 8);

@@ -25,6 +25,12 @@ public class ServerMain {
 
         System.out.println("MatchMaker RMI registry started on port " + PORT);
         System.out.println("Bound services: AuthService, PlayerService, AdminService");
+
+        // RMI's exported objects are served by daemon-ish background threads that don't, on their
+        // own, keep the launching JVM alive -- under `mvn exec:java` Maven exits as soon as main()
+        // returns and port 1099 closes with it. Block the main thread forever so the server stays
+        // up until the process is killed (Ctrl-C / SIGTERM).
+        Thread.currentThread().join();
     }
 
     public static Registry start(int port) throws RemoteException {
