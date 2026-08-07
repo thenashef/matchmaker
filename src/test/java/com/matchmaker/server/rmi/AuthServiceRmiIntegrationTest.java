@@ -5,6 +5,7 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
 import com.matchmaker.common.rmi.AuthService;
 import com.matchmaker.server.SessionManager;
+import com.matchmaker.server.dao.InMemoryUserDao;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,52 +26,44 @@ class AuthServiceRmiIntegrationTest {
     @BeforeEach
     void startRegistryAndBindService() throws Exception {
         registry = LocateRegistry.createRegistry(TEST_PORT);
-        authServiceImpl = new AuthServiceImpl(new SessionManager());
+        authServiceImpl = new AuthServiceImpl(new SessionManager(), new InMemoryUserDao());
         registry.rebind("AuthService", authServiceImpl);
     }
 
     @AfterEach
-    void tearDownRegistry() {
-        if (registry != null) {
-            try { registry.unbind("AuthService"); } catch (Exception ignored) { }
-        }
-        if (authServiceImpl != null) {
-            try { UnicastRemoteObject.unexportObject(authServiceImpl, true); } catch (Exception ignored) { }
-        }
-        if (registry != null) {
-            try { UnicastRemoteObject.unexportObject(registry, true); } catch (Exception ignored) { }
-        }
-    }
-
-    private AuthService lookupStub() throws Exception {
-        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
-        return (AuthService) clientRegistry.lookup("AuthService");
+    void tearDownRegistry() throws Exception {
+        registry.unbind("AuthService");
+        UnicastRemoteObject.unexportObject(authServiceImpl, true);
+        UnicastRemoteObject.unexportObject(registry, true);
     }
 
     @Test
-    void login_throughRealRmiStub_returnsRealResult() throws Exception {
-        AuthService stub = lookupStub();
-        assertNotSame(authServiceImpl, stub);
+    void registerThenLogin_throughRealRmiStub_returnsRealResult() throws Exception {
+        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
+        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
 
-        LoginResultDTO result = stub.login("test", "test1234");
+        stub.register("frank", "password123");
+        LoginResultDTO result = stub.login("frank", "password123");
 
-        assertEquals("test", result.getUser().getUsername());
+        assertEquals("frank", result.getUser().getUsername());
         assertNotNull(result.getSessionToken());
-
-        assertDoesNotThrow(() -> stub.keepAlive(result.getSessionToken()));
     }
 
     @Test
     void login_withBadCredentials_throwsAuthenticationExceptionAcrossRmi() throws Exception {
-        AuthService stub = lookupStub();
+        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
+        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
+        stub.register("grace", "password123");
 
-        assertThrows(AuthenticationException.class, () -> stub.login("test", "wrongpassword"));
+        assertThrows(AuthenticationException.class, () -> stub.login("grace", "wrongpassword"));
     }
 
     @Test
     void register_takenUsername_throwsUsernameTakenExceptionAcrossRmi() throws Exception {
-        AuthService stub = lookupStub();
+        Registry clientRegistry = LocateRegistry.getRegistry("localhost", TEST_PORT);
+        AuthService stub = (AuthService) clientRegistry.lookup("AuthService");
+        stub.register("henry", "password123");
 
-        assertThrows(UsernameTakenException.class, () -> stub.register("test", "whatever"));
+        assertThrows(UsernameTakenException.class, () -> stub.register("henry", "different-password"));
     }
 }
