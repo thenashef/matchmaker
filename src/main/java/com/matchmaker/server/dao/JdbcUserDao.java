@@ -6,10 +6,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
-import java.sql.Statement;
 import java.util.Optional;
 
 public class JdbcUserDao implements UserDao {
+
+    /** MySQL's ER_DUP_ENTRY error code — the only integrity violation that means "duplicate key." */
+    private static final int MYSQL_DUPLICATE_ENTRY_ERROR_CODE = 1062;
 
     private final DataSource dataSource;
 
@@ -21,13 +23,16 @@ public class JdbcUserDao implements UserDao {
     public Optional<UserRecord> insert(String username, String passwordHash) {
         String sql = "INSERT INTO User (Username, Password) VALUES (?, ?)";
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, username);
             stmt.setString(2, passwordHash);
             stmt.executeUpdate();
             return findByUsername(username);
         } catch (SQLIntegrityConstraintViolationException e) {
-            return Optional.empty();
+            if (e.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE) {
+                return Optional.empty();
+            }
+            throw new DaoException("Failed to insert user '" + username + "'", e);
         } catch (SQLException e) {
             throw new DaoException("Failed to insert user '" + username + "'", e);
         }

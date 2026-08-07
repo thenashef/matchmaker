@@ -10,8 +10,11 @@ matchmaker/
 ├── .gitignore                 target/, .superpowers/, IDE files
 ├── MatchMaker.v1 (1).docx     Original course-provided spec (Hebrew)
 ├── MatchMaker_Spec_EN.md      English translation of the spec
+├── docker-compose.yml         Local MySQL for dev + the 3 DB-integration test classes
+├── db/                        SQL schema/seed scripts applied to the Dockerized MySQL
 ├── docs/                      All project documentation (see below)
 ├── src/main/java/...          Production code
+├── src/main/resources/        db.properties (JDBC URL/credentials for DataSourceFactory)
 └── src/test/java/...          Tests (mirrors the main tree, package-for-package)
 ```
 
@@ -20,11 +23,11 @@ Build/run commands, from the project root (requires `JAVA_HOME` pointed at a JDK
 mvn compile     # compile only
 mvn test        # compile + run all tests
 ```
-`ServerMain` is a real runnable entry point once compiled:
+`ServerMain` is a real runnable entry point once compiled. A bare `java -cp target/classes ...` no longer works — this branch added runtime dependencies (HikariCP, mysql-connector-j, jbcrypt) that aren't on that classpath, and there's no shade/assembly plugin bundling them. Instead, run it through Maven, which already knows the full dependency classpath:
 ```bash
-java -cp target/classes com.matchmaker.server.ServerMain
+mvn exec:java
 ```
-Starts an RMI registry on port 1099 and binds `AuthService`, `PlayerService`, `AdminService`.
+(`exec-maven-plugin` is configured in `pom.xml` with `com.matchmaker.server.ServerMain` as the default main class, so no `-Dexec.mainClass` is needed.) Starts an RMI registry on port 1099 and binds `AuthService`, `PlayerService`, `AdminService`.
 
 ## `src/main/java/com/matchmaker/` — production code
 
@@ -49,18 +52,21 @@ Nothing in `common` has any real behavior — it's the *contract* both the serve
 - **`server/SessionManager.java`** — in-memory `token → userId` map. `AuthServiceImpl` issues tokens here on login; every other authenticated method resolves the caller's identity through it. Constructor-injected into every `*ServiceImpl` rather than a static/global map, so it's independently unit-testable.
 - **`server/ServerMain.java`** — the real entry point. Wires one `SessionManager` into all three service implementations, starts an RMI registry, binds all three under their interface names.
 - **`server/rmi/`** — the actual implementations of the three `common/rmi` interfaces:
-  - `AuthServiceImpl` — genuinely working (not stubbed) against one hardcoded test user; real success *and* failure paths, since proving RMI's exception-crossing behavior mattered as much as proving a successful call.
-  - `PlayerServiceImpl` / `AdminServiceImpl` — every method is a deliberate stub: fully wired into the registry (proving the whole three-interface structure works), but each method body throws `UnsupportedOperationException` naming the future roadmap step that will implement it for real. Not fakes — nothing pretends to work that doesn't.
+  - `AuthServiceImpl` — genuinely working (not stubbed), backed by real DAO calls: `register()`/`login()` go through `UserDao` against MySQL, with `jbcrypt` hashing the password (never stored or compared in plaintext). The hardcoded test user from the RMI-skeleton milestone is gone. Real success *and* failure paths, since proving RMI's exception-crossing behavior mattered as much as proving a successful call.
+  - `PlayerServiceImpl` — a split, not a uniform stub: `listGameTypes()` and `getHistory()` are real, DAO-backed methods (`GameTypeDao`/`GameSessionDao`). The other six methods (`joinQueue`, `cancelQueue`, `makeMove`, `sendChatMessage`, `resign`, `rematch`) are still deliberate stubs — each throws `UnsupportedOperationException` naming the future roadmap step that will implement it for real.
+  - `AdminServiceImpl` — untouched by this branch; every method is still a deliberate stub, fully wired into the registry (proving the whole three-interface structure works) but throwing `UnsupportedOperationException`. Not a fake — nothing pretends to work that doesn't.
+- **`server/dao/`** — the JDBC/DAO layer added in this branch: `UserDao`/`GameTypeDao`/`GameSessionDao` interfaces with `Jdbc*` implementations, a `DataSourceFactory` that lazily builds a shared HikariCP connection pool (so Docker-free tests never trigger a connection attempt), and `DaoException` (an unchecked wrapper around `SQLException` for anything that isn't a handled case like a duplicate key). Talks to the MySQL schema in `db/schema.sql` via plain JDBC — no ORM.
 
-Not present yet (future roadmap steps): `server/dao/` (JDBC — step 4), `server/matchmaking/` (step 5), `server/jms/` (step 6), `server/game/` (the `GameEngine`/`CheckersEngine` — step 7). `client/` (player, JavaFX — step 8) and `admin/` (admin client, JavaFX — step 9) packages don't exist yet either.
+Not present yet (future roadmap steps): `server/matchmaking/` (step 5), `server/jms/` (step 6), `server/game/` (the `GameEngine`/`CheckersEngine` — step 7). `client/` (player, JavaFX — step 8) and `admin/` (admin client, JavaFX — step 9) packages don't exist yet either.
 
 ## `src/test/java/com/matchmaker/` — tests
 
-Mirrors the main tree package-for-package. Three different kinds of test appear, deliberately:
+Mirrors the main tree package-for-package. Four different kinds of test appear, deliberately:
 
 1. **Plain unit tests** (`SessionManagerTest`, `AuthServiceImplTest`, `PlayerServiceImplTest`, `AdminServiceImplTest`, the exception hierarchy test) — call methods directly as ordinary Java objects, no networking at all. Fast, and they isolate business logic from RMI plumbing.
 2. **Serialization round-trip tests** (`NewDtoSerializationTest`, `ExistingDtoSerializationTest`) — actually serialize a DTO to bytes and back (`ObjectOutputStream`/`ObjectInputStream`), the same mechanism RMI uses internally. Proves the DTOs are RMI-safe, not just that they compile.
-3. **Real RMI integration tests** (`AuthServiceRmiIntegrationTest`, `ServerMainTest`) — start an actual `Registry` on a test-only port, look up a genuine stub via `Registry.lookup()`, and call through it. These are the tests that prove RMI itself works end-to-end, automatically, on every `mvn test` run — no manual two-terminal demo required to trust it.
+3. **Real RMI integration tests** (`AuthServiceRmiIntegrationTest`, `ServerMainTest`) — start an actual `Registry` on a test-only port, look up a genuine stub via `Registry.lookup()`, and call through it. These are the tests that prove RMI itself works end-to-end, automatically, on every `mvn test` run — no manual two-terminal demo required to trust it. Both stay Docker-free: `AuthServiceRmiIntegrationTest` runs `AuthServiceImpl` against in-memory fake DAOs, and `ServerMainTest` relies on Hikari's lazy pool initialization (`DataSourceFactory` never opens a real connection just from being constructed).
+4. **DB-integration tests** (`UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`) — run real SQL against a real MySQL, started with `docker compose up -d` (see `docker-compose.yml` / `db/schema.sql`), clearing the relevant tables in `@BeforeEach` and inserting whatever fixture rows each test needs. These are the *only* tests in the whole suite that require Docker; everything else above (including the RMI integration tier and `ServerMainTest`) stays Docker-free.
 
 ## `docs/` — documentation
 
@@ -73,9 +79,11 @@ docs/
 └── superpowers/
     ├── plans/
     │   ├── 2026-08-05-contracts-implementation.md          Implementation plan: contracts
-    │   └── 2026-08-05-rmi-server-skeleton-implementation.md   Implementation plan: RMI server skeleton
+    │   ├── 2026-08-05-rmi-server-skeleton-implementation.md   Implementation plan: RMI server skeleton
+    │   └── 2026-08-07-jdbc-dao-layer-implementation.md     Implementation plan: JDBC/DAO layer
     └── specs/
-        └── 2026-08-05-rmi-server-skeleton-design.md        Design doc: the RMI server skeleton milestone
+        ├── 2026-08-05-rmi-server-skeleton-design.md        Design doc: the RMI server skeleton milestone
+        └── 2026-08-07-jdbc-dao-layer-design.md             Design doc: the JDBC/DAO layer milestone
 ```
 
 Each completed (or in-progress) milestone has this same pair: a **design doc** (`specs/` — the *why*, decisions and rationale, written and agreed before any code) and an **implementation plan** (`superpowers/plans/` — the *how*, broken into bite-sized, TDD-ordered tasks). The `superpowers/` subfolder name comes from the workflow used to produce those docs (brainstorm → plan → subagent-driven implementation with review); it's just a naming artifact of that process, not a meaningful structural distinction from `specs/` at the top level.
@@ -88,7 +96,7 @@ Each completed (or in-progress) milestone has this same pair: a **design doc** (
 | A new kind of failure a remote call can throw | `common/exceptions/` (extend `MatchmakerException`) |
 | A new remote method | The relevant interface in `common/rmi/`, then its implementation in `server/rmi/` |
 | Real (non-stub) logic for an existing `PlayerService`/`AdminService` method | `server/rmi/PlayerServiceImpl.java` or `AdminServiceImpl.java` — replace the `UnsupportedOperationException` |
-| Database access | Not yet created — will be `server/dao/` (step 4) |
+| Database access | `server/dao/` — add a `*Dao` interface + `Jdbc*Dao` implementation, following `UserDao`/`JdbcUserDao` |
 | Game rule logic | Not yet created — will be `server/game/` (step 7) |
 | Player-facing UI | Not yet created — will be a `client/` package (step 8, JavaFX) |
 | Admin-facing UI | Not yet created — will be an `admin/` package (step 9, JavaFX) |
