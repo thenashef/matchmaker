@@ -8,6 +8,8 @@ import com.matchmaker.common.exceptions.NotParticipantException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.rmi.PlayerService;
 import com.matchmaker.server.SessionManager;
+import com.matchmaker.server.dao.GameSessionDao;
+import com.matchmaker.server.dao.GameTypeDao;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -16,15 +18,21 @@ import java.util.List;
 public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerService {
 
     private final SessionManager sessionManager;
+    private final GameSessionDao gameSessionDao;
+    private final GameTypeDao gameTypeDao;
 
-    public PlayerServiceImpl(SessionManager sessionManager) throws RemoteException {
+    public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao)
+            throws RemoteException {
         super();
         this.sessionManager = sessionManager;
+        this.gameSessionDao = gameSessionDao;
+        this.gameTypeDao = gameTypeDao;
     }
 
     @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws RemoteException, AuthenticationException {
-        throw new UnsupportedOperationException("listGameTypes not implemented yet -- see build-plan.md step 4");
+        sessionManager.resolve(sessionToken);
+        return gameTypeDao.findAll();
     }
 
     @Override
@@ -63,6 +71,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
     @Override
     public List<GameStateDTO> getHistory(String sessionToken) throws RemoteException, AuthenticationException {
-        throw new UnsupportedOperationException("getHistory not implemented yet -- see build-plan.md step 4");
+        int userId = sessionManager.resolve(sessionToken);
+        return gameSessionDao.findFinishedSessionsForUser(userId);
     }
 }
