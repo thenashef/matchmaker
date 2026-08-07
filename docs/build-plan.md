@@ -47,21 +47,30 @@ The design and implementation here ended up superseding the plan originally sket
 - **Tests:** unit tests for `SessionManager`/`AuthServiceImpl`/the two stub classes (no networking involved), plus two *real* RMI integration tests — `AuthServiceRmiIntegrationTest` and `ServerMainTest` — that stand up an actual registry, look up genuine stubs, and call through them.
 - Full design rationale: `docs/superpowers/specs/2026-08-05-rmi-server-skeleton-design.md`.
 
-**Current state:** 29/29 tests passing, `mvn compile`/`mvn test` both clean, verified against a genuine fresh clone (not just the working tree). See `docs/project-structure.md` for the full file-by-file layout.
+### Milestone 3 — JDBC/DAO layer (`server.dao` package)
+- **`db/schema.sql` + `docker-compose.yml`** — the real MySQL schema (6 tables per `../MatchMaker_Spec_EN.md`: `User`, `GameType`, `GameSession`, `Move`, `MatchmakingQueue`, `ChatMessage`), plus a `docker compose` service for a local dev MySQL that auto-applies the schema on first boot.
+- **`DataSourceFactory`** — builds a HikariCP-pooled `DataSource`; deliberately lazy-init, so constructing it never blocks or fails even without a live database — connections are only attempted when a DAO actually runs a query.
+- **`UserDao`/`JdbcUserDao`, `GameTypeDao`/`JdbcGameTypeDao`, `GameSessionDao`/`JdbcGameSessionDao`** — real JDBC DAOs (all in `com.matchmaker.server.dao`) backing users, game types, and game sessions.
+- **`AuthServiceImpl.register()`/`.login()`** are now real: DAO-backed, with passwords bcrypt-hashed via jBCrypt — the old hardcoded test user is gone entirely.
+- **`PlayerServiceImpl.listGameTypes()` and `.getHistory()`** are now real and DAO-backed — the first two `PlayerServiceImpl` methods to graduate off the `UnsupportedOperationException` stub pattern.
+- **`ServerMain`** wired to the real JDBC DAOs via a single shared `DataSourceFactory`-built connection pool.
+- **Tests:** a fourth test tier — DB-integration tests (`UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`) that run real SQL against a real Docker MySQL. `ServerMainTest` and `AuthServiceRmiIntegrationTest` remain Docker-free (in-memory fake DAOs + Hikari's lazy pool init), so the "Docker-free except 3 DAO tests" design goal was achieved.
+- Full design rationale: `docs/superpowers/specs/2026-08-07-jdbc-dao-layer-design.md` and `docs/superpowers/plans/2026-08-07-jdbc-dao-layer-implementation.md`.
+
+**Current state:** 42/42 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean, verified against a genuine fresh clone (not just the working tree). See `docs/project-structure.md` for the full file-by-file layout.
 
 ## Next Steps
 
-**Immediate next focus — step 4, JDBC/DAO layer:**
-- Stand up the MySQL schema (6 tables per `../MatchMaker_Spec_EN.md`).
-- Write `UserDao` first.
-- Replace `AuthServiceImpl`'s hardcoded test user with real `register`/`login` backed by the database.
-- Implement `PlayerService.getHistory()` for real (currently a stub — the first `PlayerServiceImpl` method to graduate off the stub pattern).
+**Immediate next focus — step 5, matchmaking queue logic:**
+- `MatchmakingQueue` handling with synchronized/atomic pairing.
+- Create a `GameSession` row when two players match — the first code to actually write to the `GameSession` and `MatchmakingQueue` tables.
 
-**After that, in roadmap order** (steps 5–11 above): matchmaking queue logic, JMS setup (ActiveMQ topics for async server→client push), the game engine (`GameEngine` interface + `CheckersEngine`, wired into `makeMove`), the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
+**After that, in roadmap order** (steps 6–11 above): JMS setup (ActiveMQ topics for async server→client push), the game engine (`GameEngine` interface + `CheckersEngine`, wired into `makeMove`), the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
 
-Each of these gets the same treatment the first two milestones did: a design doc (brainstorming), an implementation plan (writing-plans), then subagent-driven execution with per-task review and a final whole-branch review before merge.
+Each of these gets the same treatment the first three milestones did: a design doc (brainstorming), an implementation plan (writing-plans), then subagent-driven execution with per-task review and a final whole-branch review before merge.
 
 ## Verification
 - `mvn compile` succeeds with no errors.
-- `mvn test` passes (29/29), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `mvn test` passes (42/42, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, or `GameSessionDaoTest` — these three run real SQL against a real MySQL. Every other test (including `ServerMainTest` and `AuthServiceRmiIntegrationTest`) remains Docker-free.
 - `ServerMain` remains a real, manually-runnable entry point (console confirms the registry started and all three services are bound) for demoing against a real client later.
