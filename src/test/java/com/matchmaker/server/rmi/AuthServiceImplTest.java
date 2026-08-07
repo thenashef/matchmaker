@@ -1,9 +1,11 @@
 package com.matchmaker.server.rmi;
 
 import com.matchmaker.common.dto.LoginResultDTO;
+import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
 import com.matchmaker.server.SessionManager;
+import com.matchmaker.server.dao.InMemoryUserDao;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,7 +20,7 @@ class AuthServiceImplTest {
 
     @BeforeEach
     void createAuthService() throws Exception {
-        authService = new AuthServiceImpl(new SessionManager());
+        authService = new AuthServiceImpl(new SessionManager(), new InMemoryUserDao());
     }
 
     @AfterEach
@@ -29,16 +31,37 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void login_withCorrectCredentials_returnsTokenAndUser() throws Exception {
-        LoginResultDTO result = authService.login("test", "test1234");
+    void register_withNewUsername_returnsUserWithDefaults() throws Exception {
+        UserDTO user = authService.register("alice", "password123");
 
-        assertEquals("test", result.getUser().getUsername());
+        assertEquals("alice", user.getUsername());
+        assertFalse(user.isAdmin());
+        assertEquals(0, user.getWins());
+        assertEquals(1200, user.getRating());
+    }
+
+    @Test
+    void register_withTakenUsername_throwsUsernameTakenException() throws Exception {
+        authService.register("bob", "password123");
+
+        assertThrows(UsernameTakenException.class, () -> authService.register("bob", "different-password"));
+    }
+
+    @Test
+    void login_withCorrectCredentials_returnsTokenAndUser() throws Exception {
+        authService.register("carol", "password123");
+
+        LoginResultDTO result = authService.login("carol", "password123");
+
+        assertEquals("carol", result.getUser().getUsername());
         assertNotNull(result.getSessionToken());
     }
 
     @Test
     void login_withWrongPassword_throwsAuthenticationException() throws Exception {
-        assertThrows(AuthenticationException.class, () -> authService.login("test", "wrongpassword"));
+        authService.register("dave", "password123");
+
+        assertThrows(AuthenticationException.class, () -> authService.login("dave", "wrongpassword"));
     }
 
     @Test
@@ -47,18 +70,9 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void register_withTakenUsername_throwsUsernameTakenException() throws Exception {
-        assertThrows(UsernameTakenException.class, () -> authService.register("test", "whatever"));
-    }
-
-    @Test
-    void register_withNewUsername_throwsUnsupportedOperationException() throws Exception {
-        assertThrows(UnsupportedOperationException.class, () -> authService.register("newuser", "whatever"));
-    }
-
-    @Test
     void keepAlive_withValidToken_doesNotThrow() throws Exception {
-        LoginResultDTO result = authService.login("test", "test1234");
+        authService.register("erin", "password123");
+        LoginResultDTO result = authService.login("erin", "password123");
 
         assertDoesNotThrow(() -> authService.keepAlive(result.getSessionToken()));
     }
