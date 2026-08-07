@@ -1,0 +1,16 @@
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: matchmaker
+      MYSQL_USER: matchmaker
+      MYSQL_PASSWORD: matchmaker
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - matchmaker-mysql-data:/var/lib/mysql
+
+volumes:
+  matchmaker-mysql-data:
