@@ -165,7 +165,7 @@ Extends the project's existing three-tier test pattern with a fourth tier:
 
 `AuthServiceImplTest` and `PlayerServiceImplTest` (existing, tier 1) are updated to use small in-memory fake implementations of `UserDao`/`GameSessionDao`/`GameTypeDao` rather than real DAOs — this keeps them fast and DB-independent, testing `AuthServiceImpl`'s/`PlayerServiceImpl`'s own logic (hashing calls, exception translation, session handling) in isolation from JDBC.
 
-**Explicit tradeoff, called out rather than left implicit:** this changes the project's current "fresh clone → `mvn test` → all green, no external setup" guarantee. The four new DB-integration tests require `docker compose up -d` to have been run first; without it, those specific tests fail with a connection error (everything else still passes). The build-plan's Verification section will be updated to state this plainly.
+**Explicit tradeoff, called out rather than left implicit:** this changes the project's current "fresh clone → `mvn test` → all green, no external setup" guarantee. The three new DB-integration tests (`UserDaoTest`, `GameSessionDaoTest`, `GameTypeDaoTest`) require `docker compose up -d` to have been run first; without it, those specific tests fail with a connection error (everything else still passes). The build-plan's Verification section will be updated to state this plainly.
 
 ## Out of scope for this milestone
 
