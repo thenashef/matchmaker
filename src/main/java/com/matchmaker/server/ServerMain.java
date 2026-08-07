@@ -1,9 +1,17 @@
 package com.matchmaker.server;
 
+import com.matchmaker.server.dao.DataSourceFactory;
+import com.matchmaker.server.dao.GameSessionDao;
+import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.server.dao.JdbcGameSessionDao;
+import com.matchmaker.server.dao.JdbcGameTypeDao;
+import com.matchmaker.server.dao.JdbcUserDao;
+import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.rmi.AdminServiceImpl;
 import com.matchmaker.server.rmi.AuthServiceImpl;
 import com.matchmaker.server.rmi.PlayerServiceImpl;
 
+import javax.sql.DataSource;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -32,9 +40,14 @@ public class ServerMain {
     static Started startWithImpls(int port) throws RemoteException {
         SessionManager sessionManager = new SessionManager();
 
+        DataSource dataSource = DataSourceFactory.create();
+        UserDao userDao = new JdbcUserDao(dataSource);
+        GameSessionDao gameSessionDao = new JdbcGameSessionDao(dataSource);
+        GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
+
         Registry registry = LocateRegistry.createRegistry(port);
-        AuthServiceImpl authService = new AuthServiceImpl(sessionManager);
-        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager);
+        AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
+        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager);
 
         registry.rebind("AuthService", authService);
