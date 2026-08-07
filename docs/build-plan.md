@@ -10,11 +10,7 @@ This is a from-scratch final project for an Advanced Java course (see `../MatchM
 - MySQL and ActiveMQ are not required to be running yet for the first milestone (RMI only, no DB/JMS wiring yet).
 
 ## Working style (important)
-This is the user's own course project — they need to understand and agree with every piece of code, not receive a batch of files they didn't review. From here on: **one file/concept at a time.** For each piece, explain what it does and why and show the intended content in chat first; the user reviews/pushes back/asks questions; only after agreement does it get written to disk. No writing a run of files in one go without checkpoints in between.
-
-**Written before this rule was set (still needs review, not yet agreed-on):** `pom.xml`, `GameStatus.java`, `QueueStatus.java`. These should be walked through with the user before being treated as final — fields, style (e.g. records vs. classes), or shape may change.
-
-`UserDTO.java`, `MoveDTO.java`, and `GameStateDTO.java` have since gone through that review as part of the contracts design pass — see `docs/specs/2026-08-05-contracts-design.md`, which documents all three as already on disk and confirmed as final.
+This is the user's own course project — they need to understand and agree with every piece of code, not receive a batch of files they didn't review. **One file/concept at a time.** For each piece, explain what it does and why and show the intended content in chat first; the user reviews/pushes back/asks questions; only after agreement does it get written to disk. New work goes through brainstorming (design doc) → writing-plans (implementation plan) → subagent-driven execution with a task review after every task and a final whole-branch review before merge.
 
 ## Full Roadmap (in build order)
 
@@ -30,13 +26,42 @@ This is the user's own course project — they need to understand and agree with
 10. **Edge cases** — `keepAlive`/disconnect handling → `ABANDONED` state, turn timeout, Rematch, per-session authorization checks (only participants + only the player whose turn it is can act).
 11. **Testing & polish** — manual multi-client runs, error handling, demo/packaging prep.
 
-## Completed Milestone: RMI Foundation (steps 1–3)
+## What's Implemented So Far (steps 1–3, merged to `main`)
 
-**What "done" looks like:** a server process is running, exposes bound RMI remote objects, and a separate client can look them up over RMI and successfully call a method on them — proving the client/server wiring works before any real feature is built on top.
+**What "done" looks like:** a server process is running, exposes bound RMI remote objects, and a separate client can look them up over RMI and successfully call a method on them — proving the client/server wiring works before any real feature is built on top. That's working today.
 
 The design and implementation here ended up superseding the plan originally sketched for this milestone: instead of a single `MatchmakerService.java` interface, the actual contract split into three interfaces (`AuthService`, `PlayerService`, `AdminService`) — see `docs/specs/2026-08-05-contracts-design.md` for that design and `docs/superpowers/plans/2026-08-05-contracts-implementation.md` for how it was implemented. Instead of a throwaway `RmiTestClient.java` `main` method, RMI connectivity is proven by `AuthServiceRmiIntegrationTest` — a real, automated integration test that stands up an RMI registry, binds a real `AuthServiceImpl`, and calls it through a genuine looked-up stub — see `docs/superpowers/specs/2026-08-05-rmi-server-skeleton-design.md` for that design and `docs/superpowers/plans/2026-08-05-rmi-server-skeleton-implementation.md` for how it was implemented.
 
+### Milestone 1 — Contracts (`common` package)
+- **Enums:** `GameStatus` (`ACTIVE`/`FINISHED`/`ABANDONED`), `QueueStatus` (`WAITING`/`MATCHED`/`CANCELLED`).
+- **DTOs** (all `Serializable`, plain classes — private final fields, one constructor, getters only): `UserDTO`, `MoveDTO`, `GameStateDTO`, `LoginResultDTO`, `GameTypeDTO`, `ChatMessageDTO`.
+- **Exceptions** (all checked, all extend `MatchmakerException`): `AuthenticationException`, `UsernameTakenException`, `NotParticipantException`, `NotYourTurnException`, `IllegalMoveException`, `NotAdminException`.
+- **RMI interfaces:** `AuthService` (register/login/keepAlive — shared by both client types), `PlayerService` (game-loop calls), `AdminService` (admin actions).
+- Full design rationale: `docs/specs/2026-08-05-contracts-design.md`.
+
+### Milestone 2 — RMI server skeleton (`server` package)
+- **`SessionManager`** — in-memory `token → userId` map; issues and resolves session tokens.
+- **`AuthServiceImpl`** — real (not stubbed) auth logic against one hardcoded test user (`username="test"`, `password="test1234"`) — register/login/keepAlive all have genuine success *and* failure paths.
+- **`PlayerServiceImpl` / `AdminServiceImpl`** — structurally complete (implement every interface method, correctly bound in the registry), but every method currently throws `UnsupportedOperationException` naming the future roadmap step that implements it — deliberate stubs, not fakes.
+- **`ServerMain`** — starts a real RMI registry on port 1099 and binds all three services.
+- **Tests:** unit tests for `SessionManager`/`AuthServiceImpl`/the two stub classes (no networking involved), plus two *real* RMI integration tests — `AuthServiceRmiIntegrationTest` and `ServerMainTest` — that stand up an actual registry, look up genuine stubs, and call through them.
+- Full design rationale: `docs/superpowers/specs/2026-08-05-rmi-server-skeleton-design.md`.
+
+**Current state:** 29/29 tests passing, `mvn compile`/`mvn test` both clean, verified against a genuine fresh clone (not just the working tree). See `docs/project-structure.md` for the full file-by-file layout.
+
+## Next Steps
+
+**Immediate next focus — step 4, JDBC/DAO layer:**
+- Stand up the MySQL schema (6 tables per `../MatchMaker_Spec_EN.md`).
+- Write `UserDao` first.
+- Replace `AuthServiceImpl`'s hardcoded test user with real `register`/`login` backed by the database.
+- Implement `PlayerService.getHistory()` for real (currently a stub — the first `PlayerServiceImpl` method to graduate off the stub pattern).
+
+**After that, in roadmap order** (steps 5–11 above): matchmaking queue logic, JMS setup (ActiveMQ topics for async server→client push), the game engine (`GameEngine` interface + `CheckersEngine`, wired into `makeMove`), the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
+
+Each of these gets the same treatment the first two milestones did: a design doc (brainstorming), an implementation plan (writing-plans), then subagent-driven execution with per-task review and a final whole-branch review before merge.
+
 ## Verification
 - `mvn compile` succeeds with no errors.
-- `mvn test` passes, including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `mvn test` passes (29/29), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
 - `ServerMain` remains a real, manually-runnable entry point (console confirms the registry started and all three services are bound) for demoing against a real client later.
