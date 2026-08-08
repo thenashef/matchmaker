@@ -68,6 +68,21 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         }
 
         if (opponentUserId == null) {
+            String findOwnRowSql = "SELECT ID FROM MatchmakingQueue "
+                    + "WHERE GameTypeID = ? AND UserID = ? AND Status = 'WAITING' LIMIT 1";
+            boolean alreadyQueued;
+            try (PreparedStatement stmt = conn.prepareStatement(findOwnRowSql)) {
+                stmt.setInt(1, gameTypeId);
+                stmt.setInt(2, userId);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    alreadyQueued = rs.next();
+                }
+            }
+
+            if (alreadyQueued) {
+                return null;
+            }
+
             String insertQueueRowSql = "INSERT INTO MatchmakingQueue (UserID, GameTypeID, Status, JoinedAt) "
                     + "VALUES (?, ?, 'WAITING', ?)";
             try (PreparedStatement stmt = conn.prepareStatement(insertQueueRowSql)) {

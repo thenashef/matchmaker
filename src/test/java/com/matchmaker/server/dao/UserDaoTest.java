@@ -19,6 +19,7 @@ class UserDaoTest {
     @BeforeEach
     void cleanTables() throws Exception {
         try (Connection conn = DATA_SOURCE.getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("DELETE FROM MatchmakingQueue");
             stmt.execute("DELETE FROM GameSession");
             stmt.execute("DELETE FROM User");
             stmt.execute("DELETE FROM GameType");

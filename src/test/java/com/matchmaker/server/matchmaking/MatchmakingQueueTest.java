@@ -69,6 +69,18 @@ class MatchmakingQueueTest {
     }
 
     @Test
+    void join_calledTwiceByCaller_doesNotCreateDuplicateRow() throws Exception {
+        int aliceId = insertUser("alice");
+
+        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId);
+        GameStateDTO second = matchmakingQueue.join(aliceId, gameTypeId);
+
+        assertNull(first);
+        assertNull(second);
+        assertEquals(1, countQueueRows());
+    }
+
+    @Test
     void cancel_removesWaitingRow() throws Exception {
         int aliceId = insertUser("alice");
         matchmakingQueue.join(aliceId, gameTypeId);
