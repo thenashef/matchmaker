@@ -10,6 +10,7 @@ import com.matchmaker.common.rmi.PlayerService;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.server.matchmaking.MatchmakingQueue;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -20,13 +21,15 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     private final SessionManager sessionManager;
     private final GameSessionDao gameSessionDao;
     private final GameTypeDao gameTypeDao;
+    private final MatchmakingQueue matchmakingQueue;
 
-    public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao)
-            throws RemoteException {
+    public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao,
+                              MatchmakingQueue matchmakingQueue) throws RemoteException {
         super();
         this.sessionManager = sessionManager;
         this.gameSessionDao = gameSessionDao;
         this.gameTypeDao = gameTypeDao;
+        this.matchmakingQueue = matchmakingQueue;
     }
 
     @Override
@@ -36,13 +39,15 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     }
 
     @Override
-    public void joinQueue(String sessionToken, int gameTypeId) throws RemoteException, AuthenticationException {
-        throw new UnsupportedOperationException("joinQueue not implemented yet -- see build-plan.md step 5");
+    public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws RemoteException, AuthenticationException {
+        int userId = sessionManager.resolve(sessionToken);
+        return matchmakingQueue.join(userId, gameTypeId);
     }
 
     @Override
     public void cancelQueue(String sessionToken) throws RemoteException, AuthenticationException {
-        throw new UnsupportedOperationException("cancelQueue not implemented yet -- see build-plan.md step 5");
+        int userId = sessionManager.resolve(sessionToken);
+        matchmakingQueue.cancel(userId);
     }
 
     @Override

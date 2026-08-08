@@ -7,6 +7,7 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
+import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,17 +19,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerServiceImplTest {
 
+    private SessionManager sessionManager;
     private InMemoryGameSessionDao gameSessionDao;
     private InMemoryGameTypeDao gameTypeDao;
+    private InMemoryMatchmakingQueue matchmakingQueue;
     private PlayerServiceImpl playerService;
     private String sessionToken;
 
     @BeforeEach
     void createPlayerService() throws Exception {
-        SessionManager sessionManager = new SessionManager();
+        sessionManager = new SessionManager();
         gameSessionDao = new InMemoryGameSessionDao();
         gameTypeDao = new InMemoryGameTypeDao();
-        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao);
+        matchmakingQueue = new InMemoryMatchmakingQueue();
+        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue);
         sessionToken = sessionManager.createSession(1);
     }
 
@@ -71,9 +75,42 @@ class PlayerServiceImplTest {
     }
 
     @Test
+    void joinQueue_noOpponentWaiting_returnsNull() throws Exception {
+        GameStateDTO result = playerService.joinQueue(sessionToken, 1);
+
+        assertNull(result);
+    }
+
+    @Test
+    void joinQueue_opponentWaiting_returnsMatchedSession() throws Exception {
+        String otherToken = sessionManager.createSession(2);
+        playerService.joinQueue(otherToken, 1);
+
+        GameStateDTO result = playerService.joinQueue(sessionToken, 1);
+
+        assertNotNull(result);
+        assertEquals(GameStatus.ACTIVE, result.getStatus());
+    }
+
+    @Test
+    void joinQueue_invalidToken_throwsAuthenticationException() {
+        assertThrows(AuthenticationException.class, () -> playerService.joinQueue("bogus-token", 1));
+    }
+
+    @Test
+    void cancelQueue_validToken_doesNotThrow() throws Exception {
+        playerService.joinQueue(sessionToken, 1);
+
+        assertDoesNotThrow(() -> playerService.cancelQueue(sessionToken));
+    }
+
+    @Test
+    void cancelQueue_invalidToken_throwsAuthenticationException() {
+        assertThrows(AuthenticationException.class, () -> playerService.cancelQueue("bogus-token"));
+    }
+
+    @Test
     void remainingMethods_stillThrowUnsupportedOperationException() throws Exception {
-        assertThrows(UnsupportedOperationException.class, () -> playerService.joinQueue(sessionToken, 1));
-        assertThrows(UnsupportedOperationException.class, () -> playerService.cancelQueue(sessionToken));
         assertThrows(UnsupportedOperationException.class, () -> playerService.makeMove(sessionToken, 1, "{}"));
         assertThrows(UnsupportedOperationException.class, () -> playerService.sendChatMessage(sessionToken, 1, "hi"));
         assertThrows(UnsupportedOperationException.class, () -> playerService.resign(sessionToken, 1));

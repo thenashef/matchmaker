@@ -15,7 +15,7 @@ public interface PlayerService extends Remote {
     List<GameTypeDTO> listGameTypes(String sessionToken)
         throws RemoteException, AuthenticationException;
 
-    void joinQueue(String sessionToken, int gameTypeId)
+    GameStateDTO joinQueue(String sessionToken, int gameTypeId)
         throws RemoteException, AuthenticationException;
 
     void cancelQueue(String sessionToken)
