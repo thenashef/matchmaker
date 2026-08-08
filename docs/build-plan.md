@@ -26,7 +26,7 @@ This is the user's own course project — they need to understand and agree with
 10. **Edge cases** — `keepAlive`/disconnect handling → `ABANDONED` state, turn timeout, Rematch, per-session authorization checks (only participants + only the player whose turn it is can act).
 11. **Testing & polish** — manual multi-client runs, error handling, demo/packaging prep.
 
-## What's Implemented So Far (steps 1–3, merged to `main`)
+## What's Implemented So Far (steps 1–5, merged to `main`)
 
 **What "done" looks like:** a server process is running, exposes bound RMI remote objects, and a separate client can look them up over RMI and successfully call a method on them — proving the client/server wiring works before any real feature is built on top. That's working today.
 
@@ -67,7 +67,7 @@ The design and implementation here ended up superseding the plan originally sket
 - **Tests:** `MatchmakingQueueTest` runs real SQL against Docker MySQL (queue-then-wait, opponent-already-waiting, idempotent double-join, cancel, and the 3-way concurrent join). `PlayerServiceImplTest` covers `joinQueue`/`cancelQueue` against an `InMemoryMatchmakingQueue` test fixture, so that tier stays Docker-free.
 - Full design rationale: `docs/superpowers/specs/2026-08-08-matchmaking-queue-design.md` and `docs/superpowers/plans/2026-08-08-matchmaking-queue-implementation.md`.
 
-**Current state:** 53/53 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean, verified against a genuine fresh clone (not just the working tree). See `docs/project-structure.md` for the full file-by-file layout.
+**Current state:** 54/54 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean. See `docs/project-structure.md` for the full file-by-file layout.
 
 ## Next Steps
 
@@ -82,7 +82,7 @@ Each of these gets the same treatment the first four milestones did: a design do
 
 ## Verification
 - `mvn compile` succeeds with no errors.
-- `mvn test` passes (53/53, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `mvn test` passes (54/54, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
 - `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, or `MatchmakingQueueTest` — these four run real SQL against a real MySQL. Every other test (including `ServerMainTest` and `AuthServiceRmiIntegrationTest`) remains Docker-free.
 - `ServerMain` remains a real, manually-runnable entry point (console confirms the registry started and all three services are bound) for demoing against a real client later. Run it with `mvn exec:java` (via `exec-maven-plugin`, configured in `pom.xml`) — not `java -cp target/classes ...`, which no longer works now that runtime deps (HikariCP, mysql-connector-j, jbcrypt) aren't on that bare classpath. `ServerMain.main()` blocks on `Thread.currentThread().join()` after printing its banner, so the process (and port 1099) stays up until you Ctrl-C it rather than exiting the moment `main()` returns.
 - `db/schema.sql` now seeds one `GameType` row (Checkers, 2 players, 8x8 board) on first boot of a fresh Docker volume, so `PlayerServiceImpl.listGameTypes()` has something to return out of the box.
