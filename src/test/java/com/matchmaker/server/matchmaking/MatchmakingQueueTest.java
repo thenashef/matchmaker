@@ -2,6 +2,7 @@ package com.matchmaker.server.matchmaking;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.server.TestDatabase;
 import com.matchmaker.server.dao.DataSourceFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,12 +32,7 @@ class MatchmakingQueueTest {
 
     @BeforeEach
     void cleanTablesAndInsertFixtures() throws Exception {
-        try (Connection conn = DATA_SOURCE.getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM GameSession");
-            stmt.execute("DELETE FROM MatchmakingQueue");
-            stmt.execute("DELETE FROM User");
-            stmt.execute("DELETE FROM GameType");
-        }
+        TestDatabase.cleanAll(DATA_SOURCE);
         gameTypeId = insertGameType("Checkers");
     }
 
@@ -74,6 +70,19 @@ class MatchmakingQueueTest {
 
         GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId);
         GameStateDTO second = matchmakingQueue.join(aliceId, gameTypeId);
+
+        assertNull(first);
+        assertNull(second);
+        assertEquals(1, countQueueRows());
+    }
+
+    @Test
+    void join_calledTwiceForDifferentGameTypes_doesNotCreateSecondRow() throws Exception {
+        int chessGameTypeId = insertGameType("Chess");
+        int aliceId = insertUser("alice");
+
+        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId);
+        GameStateDTO second = matchmakingQueue.join(aliceId, chessGameTypeId);
 
         assertNull(first);
         assertNull(second);
