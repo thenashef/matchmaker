@@ -7,6 +7,8 @@ import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
 import com.matchmaker.server.dao.JdbcUserDao;
 import com.matchmaker.server.dao.UserDao;
+import com.matchmaker.server.matchmaking.JdbcMatchmakingQueue;
+import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import com.matchmaker.server.rmi.AdminServiceImpl;
 import com.matchmaker.server.rmi.AuthServiceImpl;
 import com.matchmaker.server.rmi.PlayerServiceImpl;
@@ -50,10 +52,11 @@ public class ServerMain {
         UserDao userDao = new JdbcUserDao(dataSource);
         GameSessionDao gameSessionDao = new JdbcGameSessionDao(dataSource);
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
+        MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
 
         Registry registry = LocateRegistry.createRegistry(port);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
-        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao);
+        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager);
 
         registry.rebind("AuthService", authService);
