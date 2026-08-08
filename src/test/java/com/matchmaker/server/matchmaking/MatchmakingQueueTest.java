@@ -90,6 +90,32 @@ class MatchmakingQueueTest {
     }
 
     @Test
+    void join_alreadyQueuedForDifferentGameType_returnsNullAndDoesNotDisturbEitherQueue() throws Exception {
+        int chessGameTypeId = insertGameType("Chess");
+        int bobId = insertUser("bob");
+        int aliceId = insertUser("alice");
+
+        // Bob joins chess: no opponent, Bob is now WAITING for chess.
+        GameStateDTO bobJoin = matchmakingQueue.join(bobId, chessGameTypeId);
+        // Alice joins checkers: no opponent, Alice is now WAITING for checkers.
+        GameStateDTO aliceJoinCheckers = matchmakingQueue.join(aliceId, gameTypeId);
+
+        // Alice then joins chess: the opponent lookup would find Bob waiting for chess,
+        // but Alice already has a WAITING row (checkers), so this must be a no-op.
+        GameStateDTO aliceJoinChess = matchmakingQueue.join(aliceId, chessGameTypeId);
+
+        assertNull(bobJoin);
+        assertNull(aliceJoinCheckers);
+        assertNull(aliceJoinChess, "Alice already has a WAITING row, so joining a second game type must no-op");
+        assertEquals(2, countQueueRows(), "Bob's chess row and Alice's checkers row must both remain untouched");
+        assertEquals("WAITING", queueStatusFor(bobId, chessGameTypeId),
+                "Bob's chess row must still be WAITING, not matched into a session");
+        assertEquals("WAITING", queueStatusFor(aliceId, gameTypeId),
+                "Alice's checkers row must still be WAITING, not matched into a session");
+        assertEquals(0, countGameSessions(), "no GameSession should have been created");
+    }
+
+    @Test
     void cancel_removesWaitingRow() throws Exception {
         int aliceId = insertUser("alice");
         matchmakingQueue.join(aliceId, gameTypeId);
@@ -146,6 +172,28 @@ class MatchmakingQueueTest {
     private int countQueueRows() throws Exception {
         try (Connection conn = DATA_SOURCE.getConnection();
              PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM MatchmakingQueue");
+             ResultSet rs = stmt.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        }
+    }
+
+    private String queueStatusFor(int userId, int gameTypeId) throws Exception {
+        String sql = "SELECT Status FROM MatchmakingQueue WHERE UserID = ? AND GameTypeID = ?";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, gameTypeId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                assertTrue(rs.next(), "expected a MatchmakingQueue row for userId=" + userId + " gameTypeId=" + gameTypeId);
+                return rs.getString("Status");
+            }
+        }
+    }
+
+    private int countGameSessions() throws Exception {
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM GameSession");
              ResultSet rs = stmt.executeQuery()) {
             rs.next();
             return rs.getInt(1);

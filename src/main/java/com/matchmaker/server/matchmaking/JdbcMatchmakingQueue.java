@@ -89,6 +89,33 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
     }
 
     private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId) throws SQLException {
+        // Deliberately NOT scoped by GameTypeID: a user can only ever occupy one
+        // queue slot at a time, for one game type, mirroring cancel(int userId)'s
+        // "one queue slot per user" model below. Scoping this check by game type as
+        // well would let the same user queue for checkers AND chess simultaneously,
+        // each row independently eligible to be matched by a different opponent -
+        // i.e. the exact double-match bug this guard exists to prevent, just reached
+        // via a second game type instead of a second call for the same one.
+        //
+        // This check runs unconditionally, before any opponent lookup: if it only ran
+        // on the "no opponent found" path, a caller who already has a WAITING row for
+        // a different game type would skip straight past it whenever an opponent for
+        // *this* game type happened to be waiting, leaving their other row stale and
+        // eligible to be matched a second time later.
+        String findOwnRowSql = "SELECT ID FROM MatchmakingQueue "
+                + "WHERE UserID = ? AND Status = 'WAITING' LIMIT 1";
+        boolean alreadyQueued;
+        try (PreparedStatement stmt = conn.prepareStatement(findOwnRowSql)) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                alreadyQueued = rs.next();
+            }
+        }
+
+        if (alreadyQueued) {
+            return null;
+        }
+
         Integer opponentQueueId = null;
         Integer opponentUserId = null;
 
@@ -107,27 +134,6 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         }
 
         if (opponentUserId == null) {
-            // Deliberately NOT scoped by GameTypeID: a user can only ever occupy one
-            // queue slot at a time, for one game type, mirroring cancel(int userId)'s
-            // "one queue slot per user" model below. Scoping this check by game type as
-            // well would let the same user queue for checkers AND chess simultaneously,
-            // each row independently eligible to be matched by a different opponent -
-            // i.e. the exact double-match bug this guard exists to prevent, just reached
-            // via a second game type instead of a second call for the same one.
-            String findOwnRowSql = "SELECT ID FROM MatchmakingQueue "
-                    + "WHERE UserID = ? AND Status = 'WAITING' LIMIT 1";
-            boolean alreadyQueued;
-            try (PreparedStatement stmt = conn.prepareStatement(findOwnRowSql)) {
-                stmt.setInt(1, userId);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    alreadyQueued = rs.next();
-                }
-            }
-
-            if (alreadyQueued) {
-                return null;
-            }
-
             String insertQueueRowSql = "INSERT INTO MatchmakingQueue (UserID, GameTypeID, Status, JoinedAt) "
                     + "VALUES (?, ?, 'WAITING', ?)";
             try (PreparedStatement stmt = conn.prepareStatement(insertQueueRowSql)) {
