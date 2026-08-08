@@ -1,11 +1,10 @@
 package com.matchmaker.server.dao;
 
+import com.matchmaker.server.TestDatabase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.Statement;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,12 +17,7 @@ class UserDaoTest {
 
     @BeforeEach
     void cleanTables() throws Exception {
-        try (Connection conn = DATA_SOURCE.getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM MatchmakingQueue");
-            stmt.execute("DELETE FROM GameSession");
-            stmt.execute("DELETE FROM User");
-            stmt.execute("DELETE FROM GameType");
-        }
+        TestDatabase.cleanAll(DATA_SOURCE);
     }
 
     @Test
