@@ -105,9 +105,16 @@ public class CheckersEngine implements GameEngine {
 
     @Override
     public String applyMove(String boardStateJson, boolean isPlayer1Turn, Move move) {
-        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
         List<Square> path = move.getPath();
+        if (path.size() < 2) {
+            throw new IllegalArgumentException("A move must have at least a from and a to square, got: " + path);
+        }
+        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
         Square from = path.get(0);
+        if (board.isEmpty(from)) {
+            throw new IllegalStateException("applyMove called with no piece on origin square " + from.toAlgebraic()
+                    + " -- the move should have been validated with isLegalMove() first");
+        }
         char piece = board.get(from);
         board.set(from, '.');
 

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameSessionDaoTest {
@@ -70,6 +71,29 @@ class GameSessionDaoTest {
     @Test
     void findActiveById_absentForAnUnknownId() {
         assertTrue(gameSessionDao.findActiveById(999999).isEmpty());
+    }
+
+    @Test
+    void recordMove_sessionNoLongerMatchesTheStateItWasReadIn_throwsConcurrentGameUpdateException() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+
+        // First call: player1 moves, turn flips to player2. This commits successfully.
+        GameStateDTO firstUpdate = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player2Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}");
+        gameSessionDao.recordMove(firstUpdate, player1Id, "{\"path\":[\"b2\",\"a3\"]}");
+
+        // A second call still claiming to move as player1 (as if it had read the session
+        // before the first update committed) must not be allowed to silently overwrite it.
+        GameStateDTO staleUpdate = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player2Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{\"c3\":\"b\"}}");
+
+        assertThrows(ConcurrentGameUpdateException.class,
+                () -> gameSessionDao.recordMove(staleUpdate, player1Id, "{\"path\":[\"b2\",\"c3\"]}"));
+
+        // The first (legitimate) update must still stand -- not overwritten or rolled back.
+        Optional<GameStateDTO> reloaded = gameSessionDao.findActiveById(sessionId);
+        assertTrue(reloaded.isPresent());
+        assertEquals("{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}", reloaded.get().getBoardState());
     }
 
     @Test

@@ -178,6 +178,18 @@ class PlayerServiceImplTest {
     }
 
     @Test
+    void makeMove_freshlyMatchedSessionWithNullBoardState_fallsBackToInitialBoardStateAndSucceeds() throws Exception {
+        // Mirrors what JdbcMatchmakingQueue.join() actually creates -- BoardState is never
+        // set at match time, so a freshly-matched session's board is null in the DB.
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, null));
+
+        GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
+
+        assertEquals(2, result.getCurrentTurnUserId());
+        assertNotEquals(new CheckersEngine().initialBoardState(), result.getBoardState());
+    }
+
+    @Test
     void makeMove_notAParticipant_throwsNotParticipantException() throws Exception {
         String initialBoard = new CheckersEngine().initialBoardState();
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 2, 3, GameStatus.ACTIVE, 2, null, initialBoard));

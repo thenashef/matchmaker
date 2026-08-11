@@ -88,9 +88,15 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 }
 
                 boolean gameEnded = updatedSession.getStatus() == GameStatus.FINISHED;
+                // The WHERE clause ties this write back to the exact pre-move state the caller
+                // validated against (movingUserId can only be legal here if it still equals
+                // CurrentTurnUserID, and the session must still be ACTIVE) -- this is what
+                // makes concurrent calls for the same session safe: only the first to commit
+                // wins, and a loser gets 0 rows affected instead of silently clobbering it.
                 try (PreparedStatement updateSession = conn.prepareStatement(
                         "UPDATE GameSession SET BoardState = ?, CurrentTurnUserID = ?, TurnStartedAt = NOW(), "
-                                + "Status = ?, WinnerID = ?, EndTime = ? WHERE ID = ?")) {
+                                + "Status = ?, WinnerID = ?, EndTime = ? "
+                                + "WHERE ID = ? AND CurrentTurnUserID = ? AND Status = 'ACTIVE'")) {
                     updateSession.setString(1, updatedSession.getBoardState());
                     if (updatedSession.getCurrentTurnUserId() != null) {
                         updateSession.setInt(2, updatedSession.getCurrentTurnUserId());
@@ -109,7 +115,14 @@ public class JdbcGameSessionDao implements GameSessionDao {
                         updateSession.setNull(5, Types.TIMESTAMP);
                     }
                     updateSession.setInt(6, updatedSession.getSessionId());
-                    updateSession.executeUpdate();
+                    updateSession.setInt(7, movingUserId);
+                    int rowsUpdated = updateSession.executeUpdate();
+                    if (rowsUpdated == 0) {
+                        conn.rollback();
+                        throw new ConcurrentGameUpdateException(
+                                "Session " + updatedSession.getSessionId() + " was already updated by another move "
+                                        + "since it was read -- turn or status no longer matches");
+                    }
                 }
 
                 if (gameEnded) {

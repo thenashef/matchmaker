@@ -11,6 +11,7 @@ import com.matchmaker.common.exceptions.NotParticipantException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.rmi.PlayerService;
 import com.matchmaker.server.SessionManager;
+import com.matchmaker.server.dao.ConcurrentGameUpdateException;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
 import com.matchmaker.server.game.GameEngine;
@@ -113,12 +114,18 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             throw new IllegalMoveException("Malformed move payload: " + e.getMessage());
         }
 
+        // Matchmaking creates a session with no BoardState (see JdbcMatchmakingQueue.join())
+        // -- the very first move of a game has nothing to read yet, so fall back to the
+        // engine's starting position rather than passing null through to it.
+        String currentBoardState = session.getBoardState() != null
+                ? session.getBoardState() : gameEngine.initialBoardState();
+
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
-        if (!gameEngine.isLegalMove(session.getBoardState(), isPlayer1Turn, move)) {
+        if (!gameEngine.isLegalMove(currentBoardState, isPlayer1Turn, move)) {
             throw new IllegalMoveException("Illegal move for session " + gameSessionId + ": " + movePayload);
         }
 
-        String newBoardState = gameEngine.applyMove(session.getBoardState(), isPlayer1Turn, move);
+        String newBoardState = gameEngine.applyMove(currentBoardState, isPlayer1Turn, move);
         GameResult result = gameEngine.checkWinner(newBoardState, !isPlayer1Turn);
 
         int opponentId = isPlayer1Turn ? session.getPlayer2Id() : session.getPlayer1Id();
@@ -133,7 +140,15 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                     session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.FINISHED, null, winnerId, newBoardState);
         }
 
-        return gameSessionDao.recordMove(updatedSession, userId, movePayload);
+        try {
+            return gameSessionDao.recordMove(updatedSession, userId, movePayload);
+        } catch (ConcurrentGameUpdateException e) {
+            // Someone else's call for this same session committed first since we read it --
+            // from this caller's perspective that means the turn/status they validated
+            // against is stale, which is exactly what NotYourTurnException communicates.
+            throw new NotYourTurnException("Session " + gameSessionId + " changed since it was read -- "
+                    + "it is no longer user " + userId + "'s turn (or the game already ended)");
+        }
     }
 
     @Override
