@@ -26,6 +26,7 @@ public class CheckersEngine implements GameEngine {
     }
 
     private List<Move> legalMoves(CheckersBoard board, boolean isPlayer1Turn) {
+        List<Move> captures = new ArrayList<>();
         List<Move> steps = new ArrayList<>();
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {
@@ -34,7 +35,15 @@ public class CheckersEngine implements GameEngine {
                 if (piece == '.' || !CheckersBoard.ownedBy(piece, isPlayer1Turn)) {
                     continue;
                 }
-                for (int[] dir : directionsFor(piece, isPlayer1Turn)) {
+                int[][] directions = directionsFor(piece, isPlayer1Turn);
+                for (int[] dir : directions) {
+                    Square over = new Square(row + dir[0], col + dir[1]);
+                    Square landing = new Square(row + 2 * dir[0], col + 2 * dir[1]);
+                    if (landing.isInBounds() && over.isInBounds()
+                            && !board.isEmpty(over) && !CheckersBoard.ownedBy(board.get(over), isPlayer1Turn)
+                            && board.isEmpty(landing)) {
+                        captures.add(new Move(List.of(from, landing)));
+                    }
                     Square to = new Square(row + dir[0], col + dir[1]);
                     if (to.isInBounds() && board.isEmpty(to)) {
                         steps.add(new Move(List.of(from, to)));
@@ -42,7 +51,7 @@ public class CheckersEngine implements GameEngine {
                 }
             }
         }
-        return steps;
+        return captures.isEmpty() ? steps : captures;
     }
 
     private static int[][] directionsFor(char piece, boolean isPlayer1Turn) {
