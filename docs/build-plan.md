@@ -26,7 +26,7 @@ This is the user's own course project — they need to understand and agree with
 10. **Edge cases** — `keepAlive`/disconnect handling → `ABANDONED` state, turn timeout, Rematch, per-session authorization checks (only participants + only the player whose turn it is can act).
 11. **Testing & polish** — manual multi-client runs, error handling, demo/packaging prep.
 
-## What's Implemented So Far (steps 1–5, merged to `main`)
+## What's Implemented So Far (steps 1–6, merged to `main`)
 
 **What "done" looks like:** a server process is running, exposes bound RMI remote objects, and a separate client can look them up over RMI and successfully call a method on them — proving the client/server wiring works before any real feature is built on top. That's working today.
 
@@ -67,22 +67,31 @@ The design and implementation here ended up superseding the plan originally sket
 - **Tests:** `MatchmakingQueueTest` runs real SQL against Docker MySQL (queue-then-wait, opponent-already-waiting, idempotent double-join, cancel, and the 3-way concurrent join). `PlayerServiceImplTest` covers `joinQueue`/`cancelQueue` against an `InMemoryMatchmakingQueue` test fixture, so that tier stays Docker-free.
 - Full design rationale: `docs/superpowers/specs/2026-08-08-matchmaking-queue-design.md` and `docs/superpowers/plans/2026-08-08-matchmaking-queue-implementation.md`.
 
-**Current state:** 54/54 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean. See `docs/project-structure.md` for the full file-by-file layout.
+### Milestone 5 — JMS setup (`server.jms` package)
+- **`JmsConnectionFactory`** — returns a started `javax.jms.Connection` against an embedded ActiveMQ broker (`vm://matchmaker-<uuid>`, in-process, no Docker/separate broker process). Each call gets a uniquely-named broker so tests stay fully isolated from each other.
+- **`GameEventDTO`** (`common.dto`) / **`GameEventType`** (`common.enums`, currently just `MATCH_FOUND`) — the payload published over JMS, same `Serializable` DTO shape as every other DTO.
+- **`GameEventPublisher`** (interface) / **`ActiveMqGameEventPublisher`** — publishes a `GameEventDTO` as an `ObjectMessage` to a per-player JMS `Queue` named `player.{userId}.events`. Mirrors the existing DAO/`MatchmakingQueue` interface-plus-real-impl-plus-test-fake pattern (`InMemoryGameEventPublisher` for Docker-free unit tests).
+- **`PlayerServiceImpl.joinQueue()`** now publishes a `MATCH_FOUND` event to the opponent the instant a pairing happens — this is the piece that closes the notification gap Milestone 4 deliberately left open (the already-waiting player previously had no way to learn about a match, since their own earlier `joinQueue()` call had already returned `null`). A publish failure is caught and logged (`System.err`), never allowed to fail the calling player's own already-successful `joinQueue()` result.
+- **`ServerMain`** wired to a real `ActiveMqGameEventPublisher` off its own JMS session, constructed alongside the existing DB/matchmaking wiring.
+- **Tests:** `JmsConnectionFactoryTest` (connection is usable), `GameEventPublisherJmsIntegrationTest` (a real consumer receives a published event end-to-end over the embedded broker — this is the "standalone consumer" proof from the original roadmap step, done as an automated test rather than a manual two-terminal demo), extended `PlayerServiceImplTest` (event published on match, not published when just queuing) and `NewDtoSerializationTest` (round-trip for `GameEventDTO`). All Docker-free.
+- Full design rationale: `docs/superpowers/specs/2026-08-09-jms-setup-design.md` and `docs/superpowers/plans/2026-08-10-jms-setup-implementation.md`.
+
+**Current state:** 60/60 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean. See `docs/project-structure.md` for the full file-by-file layout.
 
 ## Next Steps
 
-**Immediate next focus — step 6, JMS setup:**
-- ActiveMQ connection, one topic per game session, a server-side producer.
-- A minimal standalone consumer to prove messages arrive before touching the UI.
-- First real use: notifying the player who was already queued the moment `MatchmakingQueue.join()` pairs them with someone else — closing the gap Milestone 4 deliberately left open (the already-waiting player currently has no way to learn about a match, since their own `joinQueue()` call already returned `null` before the match happened).
+**Immediate next focus — step 7, game engine:**
+- `GameEngine` interface (`isLegalMove`, `applyMove`, `checkWinner`) with `CheckersEngine` as the first implementation.
+- Wire it into the RMI `makeMove` call on `PlayerServiceImpl` (currently the `UnsupportedOperationException` stub).
+- Persist `Move` rows and `BoardState` as moves are made.
 
-**After that, in roadmap order** (steps 7–11 above): the game engine (`GameEngine` interface + `CheckersEngine`, wired into `makeMove`), the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
+**After that, in roadmap order** (steps 8–11 above): the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
 
 Each of these gets the same treatment the first four milestones did: a design doc (brainstorming), an implementation plan (writing-plans), then subagent-driven execution with per-task review and a final whole-branch review before merge.
 
 ## Verification
 - `mvn compile` succeeds with no errors.
-- `mvn test` passes (54/54, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
-- `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, or `MatchmakingQueueTest` — these four run real SQL against a real MySQL. Every other test (including `ServerMainTest` and `AuthServiceRmiIntegrationTest`) remains Docker-free.
+- `mvn test` passes (60/60, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, or `MatchmakingQueueTest` — these four run real SQL against a real MySQL. Every other test (including `ServerMainTest`, `AuthServiceRmiIntegrationTest`, and the JMS tests `JmsConnectionFactoryTest`/`GameEventPublisherJmsIntegrationTest`, which run against an embedded in-process ActiveMQ broker) remains Docker-free.
 - `ServerMain` remains a real, manually-runnable entry point (console confirms the registry started and all three services are bound) for demoing against a real client later. Run it with `mvn exec:java` (via `exec-maven-plugin`, configured in `pom.xml`) — not `java -cp target/classes ...`, which no longer works now that runtime deps (HikariCP, mysql-connector-j, jbcrypt) aren't on that bare classpath. `ServerMain.main()` blocks on `Thread.currentThread().join()` after printing its banner, so the process (and port 1099) stays up until you Ctrl-C it rather than exiting the moment `main()` returns.
 - `db/schema.sql` now seeds one `GameType` row (Checkers, 2 players, 8x8 board) on first boot of a fresh Docker volume, so `PlayerServiceImpl.listGameTypes()` has something to return out of the box.
