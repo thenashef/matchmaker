@@ -13,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,6 +54,109 @@ class GameSessionDaoTest {
         List<GameStateDTO> history = gameSessionDao.findFinishedSessionsForUser(player1Id);
 
         assertTrue(history.isEmpty());
+    }
+
+    @Test
+    void findActiveById_returnsTheSessionWhenActive() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+
+        Optional<GameStateDTO> found = gameSessionDao.findActiveById(sessionId);
+
+        assertTrue(found.isPresent());
+        assertEquals(GameStatus.ACTIVE, found.get().getStatus());
+        assertEquals(player1Id, found.get().getPlayer1Id());
+    }
+
+    @Test
+    void findActiveById_absentForAnUnknownId() {
+        assertTrue(gameSessionDao.findActiveById(999999).isEmpty());
+    }
+
+    @Test
+    void recordMove_midGame_updatesBoardAndTurnAndInsertsMoveRow() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        GameStateDTO updated = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player2Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}");
+
+        GameStateDTO result = gameSessionDao.recordMove(updated, player1Id, "{\"path\":[\"b2\",\"a3\"]}");
+
+        assertEquals(player2Id, result.getCurrentTurnUserId());
+        assertEquals("{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}", result.getBoardState());
+        assertEquals(GameStatus.ACTIVE, result.getStatus());
+
+        Optional<GameStateDTO> reloaded = gameSessionDao.findActiveById(sessionId);
+        assertTrue(reloaded.isPresent());
+        assertEquals(player2Id, reloaded.get().getCurrentTurnUserId());
+    }
+
+    @Test
+    void recordMove_gameEnding_setsStatusAndWinnerAndUpdatesBothPlayersRatings() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        int player1RatingBefore = ratingOf(player1Id);
+        int player2RatingBefore = ratingOf(player2Id);
+
+        GameStateDTO updated = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.FINISHED, null, player1Id, "{\"rows\":8,\"cols\":8,\"pieces\":{}}");
+
+        GameStateDTO result = gameSessionDao.recordMove(updated, player1Id, "{\"path\":[\"g7\",\"h8\"]}");
+
+        assertEquals(GameStatus.FINISHED, result.getStatus());
+        assertEquals(Integer.valueOf(player1Id), result.getWinnerId());
+
+        assertTrue(ratingOf(player1Id) > player1RatingBefore);
+        assertTrue(ratingOf(player2Id) < player2RatingBefore);
+        assertEquals(1, winsOf(player1Id));
+        assertEquals(1, lossesOf(player2Id));
+    }
+
+    private int insertActiveSession(int player1Id, int player2Id, int gameTypeId) throws Exception {
+        String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID) "
+                + "VALUES (?, ?, ?, 'ACTIVE', ?)";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setInt(4, player1Id);
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    private int ratingOf(int userId) throws Exception {
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT Rating FROM User WHERE ID = ?")) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private int winsOf(int userId) throws Exception {
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT Wins FROM User WHERE ID = ?")) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private int lossesOf(int userId) throws Exception {
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT Losses FROM User WHERE ID = ?")) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
     }
 
     private int insertGameType(String name) throws Exception {
