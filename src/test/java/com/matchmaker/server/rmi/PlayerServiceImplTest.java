@@ -5,9 +5,13 @@ import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AuthenticationException;
+import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.NotParticipantException;
+import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
+import com.matchmaker.server.game.CheckersEngine;
 import com.matchmaker.server.jms.FailingGameEventPublisher;
 import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
@@ -37,7 +41,8 @@ class PlayerServiceImplTest {
         gameTypeDao = new InMemoryGameTypeDao();
         matchmakingQueue = new InMemoryMatchmakingQueue();
         gameEventPublisher = new InMemoryGameEventPublisher();
-        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, gameEventPublisher);
+        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
+                gameEventPublisher, new CheckersEngine());
         sessionToken = sessionManager.createSession(1);
     }
 
@@ -121,7 +126,8 @@ class PlayerServiceImplTest {
     @Test
     void joinQueue_publisherThrows_stillReturnsCallersOwnMatchedResult() throws Exception {
         PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
-                sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, new FailingGameEventPublisher());
+                sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
+                new FailingGameEventPublisher(), new CheckersEngine());
         try {
             String otherToken = sessionManager.createSession(2);
             playerServiceWithFailingPublisher.joinQueue(otherToken, 1); // user 2 waits first
@@ -155,9 +161,52 @@ class PlayerServiceImplTest {
 
     @Test
     void remainingMethods_stillThrowUnsupportedOperationException() throws Exception {
-        assertThrows(UnsupportedOperationException.class, () -> playerService.makeMove(sessionToken, 1, "{}"));
         assertThrows(UnsupportedOperationException.class, () -> playerService.sendChatMessage(sessionToken, 1, "hi"));
         assertThrows(UnsupportedOperationException.class, () -> playerService.resign(sessionToken, 1));
         assertThrows(UnsupportedOperationException.class, () -> playerService.rematch(sessionToken, 1));
+    }
+
+    @Test
+    void makeMove_legalMove_appliesItAndReturnsUpdatedState() throws Exception {
+        String initialBoard = new CheckersEngine().initialBoardState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
+
+        GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
+
+        assertEquals(2, result.getCurrentTurnUserId());
+        assertNotEquals(initialBoard, result.getBoardState());
+    }
+
+    @Test
+    void makeMove_notAParticipant_throwsNotParticipantException() throws Exception {
+        String initialBoard = new CheckersEngine().initialBoardState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 2, 3, GameStatus.ACTIVE, 2, null, initialBoard));
+
+        assertThrows(NotParticipantException.class,
+                () -> playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}"));
+    }
+
+    @Test
+    void makeMove_notYourTurn_throwsNotYourTurnException() throws Exception {
+        String initialBoard = new CheckersEngine().initialBoardState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 2, null, initialBoard));
+
+        assertThrows(NotYourTurnException.class,
+                () -> playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}"));
+    }
+
+    @Test
+    void makeMove_illegalMove_throwsIllegalMoveException() throws Exception {
+        String initialBoard = new CheckersEngine().initialBoardState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
+
+        assertThrows(IllegalMoveException.class,
+                () -> playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"b5\"]}"));
+    }
+
+    @Test
+    void makeMove_unknownSession_throwsIllegalMoveException() {
+        assertThrows(IllegalMoveException.class,
+                () -> playerService.makeMove(sessionToken, 999, "{\"path\":[\"b3\",\"a4\"]}"));
     }
 }

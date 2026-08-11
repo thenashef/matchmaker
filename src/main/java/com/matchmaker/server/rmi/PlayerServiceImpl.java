@@ -4,6 +4,7 @@ import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.enums.GameEventType;
+import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
 import com.matchmaker.common.exceptions.NotParticipantException;
@@ -12,6 +13,9 @@ import com.matchmaker.common.rmi.PlayerService;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.server.game.GameEngine;
+import com.matchmaker.server.game.GameResult;
+import com.matchmaker.server.game.Move;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
@@ -27,15 +31,18 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     private final GameTypeDao gameTypeDao;
     private final MatchmakingQueue matchmakingQueue;
     private final GameEventPublisher gameEventPublisher;
+    private final GameEngine gameEngine;
 
     public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao,
-                              MatchmakingQueue matchmakingQueue, GameEventPublisher gameEventPublisher) throws RemoteException {
+                              MatchmakingQueue matchmakingQueue, GameEventPublisher gameEventPublisher,
+                              GameEngine gameEngine) throws RemoteException {
         super();
         this.sessionManager = sessionManager;
         this.gameSessionDao = gameSessionDao;
         this.gameTypeDao = gameTypeDao;
         this.matchmakingQueue = matchmakingQueue;
         this.gameEventPublisher = gameEventPublisher;
+        this.gameEngine = gameEngine;
     }
 
     @Override
@@ -87,7 +94,46 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     @Override
     public GameStateDTO makeMove(String sessionToken, int gameSessionId, String movePayload)
             throws RemoteException, AuthenticationException, NotParticipantException, NotYourTurnException, IllegalMoveException {
-        throw new UnsupportedOperationException("makeMove not implemented yet -- see build-plan.md step 7");
+        int userId = sessionManager.resolve(sessionToken);
+
+        GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
+                .orElseThrow(() -> new IllegalMoveException("No active game session " + gameSessionId));
+
+        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
+            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
+        }
+        if (session.getCurrentTurnUserId() == null || session.getCurrentTurnUserId() != userId) {
+            throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
+        }
+
+        Move move;
+        try {
+            move = Move.fromJson(movePayload);
+        } catch (RuntimeException e) {
+            throw new IllegalMoveException("Malformed move payload: " + e.getMessage());
+        }
+
+        boolean isPlayer1Turn = session.getPlayer1Id() == userId;
+        if (!gameEngine.isLegalMove(session.getBoardState(), isPlayer1Turn, move)) {
+            throw new IllegalMoveException("Illegal move for session " + gameSessionId + ": " + movePayload);
+        }
+
+        String newBoardState = gameEngine.applyMove(session.getBoardState(), isPlayer1Turn, move);
+        GameResult result = gameEngine.checkWinner(newBoardState, !isPlayer1Turn);
+
+        int opponentId = isPlayer1Turn ? session.getPlayer2Id() : session.getPlayer1Id();
+        GameStateDTO updatedSession;
+        if (result == GameResult.CONTINUE) {
+            updatedSession = new GameStateDTO(session.getSessionId(), session.getGameTypeId(),
+                    session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.ACTIVE, opponentId, null, newBoardState);
+        } else {
+            Integer winnerId = result == GameResult.PLAYER1_WINS ? session.getPlayer1Id()
+                    : result == GameResult.PLAYER2_WINS ? session.getPlayer2Id() : null;
+            updatedSession = new GameStateDTO(session.getSessionId(), session.getGameTypeId(),
+                    session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.FINISHED, null, winnerId, newBoardState);
+        }
+
+        return gameSessionDao.recordMove(updatedSession, userId, movePayload);
     }
 
     @Override
