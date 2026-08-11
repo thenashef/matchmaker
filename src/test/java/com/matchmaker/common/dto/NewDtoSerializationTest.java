@@ -1,5 +1,7 @@
 package com.matchmaker.common.dto;
 
+import com.matchmaker.common.enums.GameEventType;
+import com.matchmaker.common.enums.GameStatus;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
@@ -61,5 +63,18 @@ class NewDtoSerializationTest {
         assertEquals(original.getUserId(), restored.getUserId());
         assertEquals(original.getContent(), restored.getContent());
         assertEquals(original.getSentAt(), restored.getSentAt());
+    }
+
+    @Test
+    void gameEventDTO_survivesSerializationRoundTrip() throws Exception {
+        GameStateDTO gameState = new GameStateDTO(7, 1, 42, 99, GameStatus.ACTIVE, 42, null, null);
+        GameEventDTO original = new GameEventDTO(GameEventType.MATCH_FOUND, 7, gameState);
+
+        GameEventDTO restored = roundTrip(original);
+
+        assertEquals(original.getType(), restored.getType());
+        assertEquals(original.getSessionId(), restored.getSessionId());
+        assertEquals(original.getGameState().getPlayer1Id(), restored.getGameState().getPlayer1Id());
+        assertEquals(original.getGameState().getPlayer2Id(), restored.getGameState().getPlayer2Id());
     }
 }
