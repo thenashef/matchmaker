@@ -26,7 +26,7 @@ This is the user's own course project — they need to understand and agree with
 10. **Edge cases** — `keepAlive`/disconnect handling → `ABANDONED` state, turn timeout, Rematch, per-session authorization checks (only participants + only the player whose turn it is can act).
 11. **Testing & polish** — manual multi-client runs, error handling, demo/packaging prep.
 
-## What's Implemented So Far (steps 1–6, merged to `main`)
+## What's Implemented So Far (steps 1–7, merged to `main`)
 
 **What "done" looks like:** a server process is running, exposes bound RMI remote objects, and a separate client can look them up over RMI and successfully call a method on them — proving the client/server wiring works before any real feature is built on top. That's working today.
 
@@ -76,22 +76,31 @@ The design and implementation here ended up superseding the plan originally sket
 - **Tests:** `JmsConnectionFactoryTest` (connection is usable), `GameEventPublisherJmsIntegrationTest` (a real consumer receives a published event end-to-end over the embedded broker — this is the "standalone consumer" proof from the original roadmap step, done as an automated test rather than a manual two-terminal demo), extended `PlayerServiceImplTest` (event published on match, not published when just queuing) and `NewDtoSerializationTest` (round-trip for `GameEventDTO`). All Docker-free.
 - Full design rationale: `docs/superpowers/specs/2026-08-09-jms-setup-design.md` and `docs/superpowers/plans/2026-08-10-jms-setup-implementation.md`.
 
-**Current state:** 60/60 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean. See `docs/project-structure.md` for the full file-by-file layout.
+### Milestone 6 — Game engine (`server.game` package)
+- **`Square`** — converts between algebraic square names (`"b6"`, chess-style file `a`–`h` / rank `1`–`8`) and internal `(row, col)` coordinates. The one place that conversion lives; `CheckersBoard`, `Move`, and `CheckersEngine` all go through it.
+- **`BoardState` and `Move.Payload` are both JSON**, via a new `org.json:json` dependency: `BoardState` is a sparse map of only the occupied squares (`{"rows":8,"cols":8,"pieces":{"b6":"b",...}}`); `Move.Payload` is a path of algebraic squares (`{"path":["b6","c5"]}` for a step, longer for a multi-jump chain).
+- **`GameEngine`** (interface) / **`CheckersEngine`** (the real implementation, backed by a package-private `CheckersBoard` grid helper) — `initialBoardState()`, `isLegalMove()`, `applyMove()`, `checkWinner()`. Full checkers rules: diagonal single steps (forward-only for men, either direction for kings), mandatory capture (a non-capturing move is illegal whenever any capture is available for that player), multi-jump chains that must continue while a further jump is available, king promotion at the far rank — with promotion ending a capture chain immediately even if the newly-crowned king could jump again. No "majority capture" rule (a player may choose between two non-overlapping capture options of different lengths) and no draw detection (`GameResult.DRAW` is reserved but unproduced) — both deliberately out of scope. Pure logic, no I/O, so no test-fake was needed for this package — tests use `CheckersEngine` directly.
+- **`GameSessionDao`** gains `findActiveById()` and a transactional `recordMove()` — in one transaction: inserts the `Move` row (computing the next `MoveNumber` server-side via `MAX(MoveNumber)+1` rather than trusting a caller-supplied number), updates `GameSession` (`BoardState`, `CurrentTurnUserID`, `TurnStartedAt`, and if the game ended, `Status`/`WinnerID`/`EndTime`), and if the game ended, updates both players' `Wins`/`Losses`/`Rating` in `User` using standard ELO (K=32) — satisfying the spec's requirement that these update in the same transaction as `WinnerID`/`EndTime`.
+- **`PlayerServiceImpl.makeMove()`** is now real: resolves the session, checks the caller is a participant (`NotParticipantException`) and it's their turn (`NotYourTurnException`), parses and validates the move against `GameEngine` (`IllegalMoveException` for anything illegal, including a stale/finished/unknown session id), applies it, checks for a winner, and persists everything atomically.
+- **`ServerMain`** wired to a real `CheckersEngine`.
+- **Tests:** `SquareTest`/`MoveTest` (coordinate conversion, JSON parsing), `CheckersEngineTest` (25 tests covering every rule above, built from hand-verified board positions — TDD caught two of my own hand-picked example squares being invalid/light squares along the way, both fixed before merge), `GameSessionDaoTest` extended with real-MySQL tests for `findActiveById`/`recordMove` including a real ELO transaction, `InMemoryGameSessionDao` extended for Docker-free `PlayerServiceImplTest` coverage of the full `makeMove()` flow (happy path + all three new exception paths + unknown-session).
+- Full design rationale: `docs/superpowers/specs/2026-08-11-game-engine-design.md` and `docs/superpowers/plans/2026-08-11-game-engine-implementation.md`.
+
+**Current state:** 100/100 tests passing (with `docker compose up -d` running), `mvn compile`/`mvn test` both clean. See `docs/project-structure.md` for the full file-by-file layout.
 
 ## Next Steps
 
-**Immediate next focus — step 7, game engine:**
-- `GameEngine` interface (`isLegalMove`, `applyMove`, `checkWinner`) with `CheckersEngine` as the first implementation.
-- Wire it into the RMI `makeMove` call on `PlayerServiceImpl` (currently the `UnsupportedOperationException` stub).
-- Persist `Move` rows and `BoardState` as moves are made.
+**Immediate next focus — step 8, the JavaFX player client:** Login/Register → Lobby → Matchmaking wait → Game board, wired to RMI (commands) + JMS (push updates).
 
-**After that, in roadmap order** (steps 8–11 above): the JavaFX player client, the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
+**One open gap to close before or alongside step 8:** `makeMove()` is currently RMI-only — the mover gets their own updated board back synchronously, but the *opponent* isn't proactively notified that a move happened (mirrors the same gap `joinQueue()` had before step 6, deliberately deferred by the game-engine design doc). The spec's per-session JMS Topic (distinct from step 6's per-player Queue, which only exists because no session exists yet at `MATCH_FOUND` time) is the intended mechanism — needed for the player client to feel real-time, and later for admin live-monitoring (step 9) to work without duplicating publishes.
+
+**After that, in roadmap order** (steps 9–11 above): the JavaFX admin client, then the edge-case handling (disconnect detection, turn timeouts, Rematch, authorization checks), and finally testing/polish.
 
 Each of these gets the same treatment the first four milestones did: a design doc (brainstorming), an implementation plan (writing-plans), then subagent-driven execution with per-task review and a final whole-branch review before merge.
 
 ## Verification
 - `mvn compile` succeeds with no errors.
-- `mvn test` passes (60/60, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
-- `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, or `MatchmakingQueueTest` — these four run real SQL against a real MySQL. Every other test (including `ServerMainTest`, `AuthServiceRmiIntegrationTest`, and the JMS tests `JmsConnectionFactoryTest`/`GameEventPublisherJmsIntegrationTest`, which run against an embedded in-process ActiveMQ broker) remains Docker-free.
+- `mvn test` passes (100/100, with `docker compose up -d` running), including `AuthServiceRmiIntegrationTest` and `ServerMainTest`, which prove the RMI round-trip works end to end (registry lookup, real stub, real method call) without any manual two-process run required.
+- `docker compose up -d` must be running before `UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, or `MatchmakingQueueTest` — these four run real SQL against a real MySQL (`GameSessionDaoTest` now also covers `findActiveById`/`recordMove`, including a real ELO rating transaction). Every other test (including `ServerMainTest`, `AuthServiceRmiIntegrationTest`, the JMS tests `JmsConnectionFactoryTest`/`GameEventPublisherJmsIntegrationTest`, and all of `server.game`'s `CheckersEngineTest`/`SquareTest`/`MoveTest`) remains Docker-free.
 - `ServerMain` remains a real, manually-runnable entry point (console confirms the registry started and all three services are bound) for demoing against a real client later. Run it with `mvn exec:java` (via `exec-maven-plugin`, configured in `pom.xml`) — not `java -cp target/classes ...`, which no longer works now that runtime deps (HikariCP, mysql-connector-j, jbcrypt) aren't on that bare classpath. `ServerMain.main()` blocks on `Thread.currentThread().join()` after printing its banner, so the process (and port 1099) stays up until you Ctrl-C it rather than exiting the moment `main()` returns.
 - `db/schema.sql` now seeds one `GameType` row (Checkers, 2 players, 8x8 board) on first boot of a fresh Docker volume, so `PlayerServiceImpl.listGameTypes()` has something to return out of the box.
