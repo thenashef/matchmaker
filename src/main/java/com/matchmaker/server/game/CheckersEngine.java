@@ -35,23 +35,65 @@ public class CheckersEngine implements GameEngine {
                 if (piece == '.' || !CheckersBoard.ownedBy(piece, isPlayer1Turn)) {
                     continue;
                 }
-                int[][] directions = directionsFor(piece, isPlayer1Turn);
-                for (int[] dir : directions) {
-                    Square over = new Square(row + dir[0], col + dir[1]);
-                    Square landing = new Square(row + 2 * dir[0], col + 2 * dir[1]);
-                    if (landing.isInBounds() && over.isInBounds()
-                            && !board.isEmpty(over) && !CheckersBoard.ownedBy(board.get(over), isPlayer1Turn)
-                            && board.isEmpty(landing)) {
-                        captures.add(new Move(List.of(from, landing)));
-                    }
-                    Square to = new Square(row + dir[0], col + dir[1]);
-                    if (to.isInBounds() && board.isEmpty(to)) {
-                        steps.add(new Move(List.of(from, to)));
+                findCaptureChains(board, from, piece, isPlayer1Turn, List.of(from), captures);
+                if (captures.isEmpty()) {
+                    for (int[] dir : directionsFor(piece, isPlayer1Turn)) {
+                        Square to = new Square(row + dir[0], col + dir[1]);
+                        if (to.isInBounds() && board.isEmpty(to)) {
+                            steps.add(new Move(List.of(from, to)));
+                        }
                     }
                 }
             }
         }
         return captures.isEmpty() ? steps : captures;
+    }
+
+    private void findCaptureChains(CheckersBoard board, Square current, char piece, boolean isPlayer1Turn,
+                                    List<Square> pathSoFar, List<Move> results) {
+        boolean foundFurtherJump = false;
+        for (int[] dir : directionsFor(piece, isPlayer1Turn)) {
+            Square over = new Square(current.row() + dir[0], current.col() + dir[1]);
+            Square landing = new Square(current.row() + 2 * dir[0], current.col() + 2 * dir[1]);
+            if (!landing.isInBounds() || !over.isInBounds()) {
+                continue;
+            }
+            char overPiece = board.get(over);
+            if (overPiece == '.' || CheckersBoard.ownedBy(overPiece, isPlayer1Turn) || !board.isEmpty(landing)) {
+                continue;
+            }
+
+            foundFurtherJump = true;
+            CheckersBoard scratch = board.copy();
+            scratch.set(current, '.');
+            scratch.set(over, '.');
+            boolean promotes = promotesAt(piece, landing);
+            char pieceAfterJump = promotes ? promotedForm(piece) : piece;
+            scratch.set(landing, pieceAfterJump);
+
+            List<Square> extendedPath = new ArrayList<>(pathSoFar);
+            extendedPath.add(landing);
+
+            if (promotes) {
+                results.add(new Move(extendedPath));
+            } else {
+                findCaptureChains(scratch, landing, pieceAfterJump, isPlayer1Turn, extendedPath, results);
+            }
+        }
+        if (!foundFurtherJump && pathSoFar.size() > 1) {
+            results.add(new Move(pathSoFar));
+        }
+    }
+
+    private static boolean promotesAt(char piece, Square square) {
+        if (CheckersBoard.isKing(piece)) {
+            return false;
+        }
+        return (piece == 'b' && square.row() == 7) || (piece == 'w' && square.row() == 0);
+    }
+
+    private static char promotedForm(char piece) {
+        return piece == 'b' ? 'B' : 'W';
     }
 
     private static int[][] directionsFor(char piece, boolean isPlayer1Turn) {

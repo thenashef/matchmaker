@@ -128,4 +128,45 @@ class CheckersEngineTest {
 
         assertFalse(engine.isLegalMove(board, true, otherPieceStep));
     }
+
+    @Test
+    void isLegalMove_multiJumpChain_isLegalAsOnePath() {
+        // b3 jumps c4 landing d5, then must continue: jumps e6 landing f7.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
+        Move chain = Move.fromJson("{\"path\":[\"b3\",\"d5\",\"f7\"]}");
+
+        assertTrue(engine.isLegalMove(board, true, chain));
+    }
+
+    @Test
+    void isLegalMove_multiJumpChain_stoppingEarlyWhenAFurtherJumpIsAvailable_isIllegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
+        Move stoppedEarly = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+
+        assertFalse(engine.isLegalMove(board, true, stoppedEarly));
+    }
+
+    @Test
+    void isLegalMove_multiJumpChain_choosingAShorterNonOverlappingCaptureInstead_isLegal() {
+        // Two separate, non-overlapping capture options for different player1 pieces:
+        // b3 over c4 to d5 (a two-jump chain continuing to f7), and f3 over g4 to h5 (a
+        // one-jump capture, no further jump available from h5). Both are legal choices --
+        // majority-capture is not enforced.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\",\"f3\":\"b\",\"g4\":\"w\"}}";
+        Move shorterOption = Move.fromJson("{\"path\":[\"f3\",\"h5\"]}");
+
+        assertTrue(engine.isLegalMove(board, true, shorterOption));
+    }
+
+    @Test
+    void isLegalMove_chainStopsImmediatelyOnPromotion_evenIfAFurtherJumpWouldExist() {
+        // c6 (player1 man) jumps d7 landing e8 -- e8 is the promotion rank, so the chain
+        // ends there even though a king at e8 could otherwise jump f7 to g6.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c6\":\"b\",\"d7\":\"w\",\"f7\":\"w\"}}";
+        Move stopsAtPromotion = Move.fromJson("{\"path\":[\"c6\",\"e8\"]}");
+        Move triesToContinuePastPromotion = Move.fromJson("{\"path\":[\"c6\",\"e8\",\"g6\"]}");
+
+        assertTrue(engine.isLegalMove(board, true, stopsAtPromotion));
+        assertFalse(engine.isLegalMove(board, true, triesToContinuePastPromotion));
+    }
 }
