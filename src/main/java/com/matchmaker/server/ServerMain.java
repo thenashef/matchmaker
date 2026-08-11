@@ -7,6 +7,8 @@ import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
 import com.matchmaker.server.dao.JdbcUserDao;
 import com.matchmaker.server.dao.UserDao;
+import com.matchmaker.server.game.CheckersEngine;
+import com.matchmaker.server.game.GameEngine;
 import com.matchmaker.server.jms.ActiveMqGameEventPublisher;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsConnectionFactory;
@@ -63,10 +65,12 @@ public class ServerMain {
         Connection jmsConnection = JmsConnectionFactory.create();
         Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
+        GameEngine gameEngine = new CheckersEngine();
 
         Registry registry = LocateRegistry.createRegistry(port);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
-        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, gameEventPublisher);
+        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
+                matchmakingQueue, gameEventPublisher, gameEngine);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager);
 
         registry.rebind("AuthService", authService);
