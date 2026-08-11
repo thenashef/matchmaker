@@ -105,7 +105,29 @@ public class CheckersEngine implements GameEngine {
 
     @Override
     public String applyMove(String boardStateJson, boolean isPlayer1Turn, Move move) {
-        throw new UnsupportedOperationException("applyMove not implemented yet -- see game-engine-implementation.md Task 7");
+        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
+        List<Square> path = move.getPath();
+        Square from = path.get(0);
+        char piece = board.get(from);
+        board.set(from, '.');
+
+        for (int i = 1; i < path.size(); i++) {
+            Square prev = path.get(i - 1);
+            Square current = path.get(i);
+            boolean isCapture = Math.abs(current.row() - prev.row()) == 2;
+            if (isCapture) {
+                Square captured = new Square((prev.row() + current.row()) / 2, (prev.col() + current.col()) / 2);
+                board.set(captured, '.');
+            }
+        }
+
+        Square finalSquare = path.get(path.size() - 1);
+        if (promotesAt(piece, finalSquare)) {
+            piece = promotedForm(piece);
+        }
+        board.set(finalSquare, piece);
+
+        return board.toJson();
     }
 
     @Override

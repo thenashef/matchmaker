@@ -169,4 +169,65 @@ class CheckersEngineTest {
         assertTrue(engine.isLegalMove(board, true, stopsAtPromotion));
         assertFalse(engine.isLegalMove(board, true, triesToContinuePastPromotion));
     }
+
+    @Test
+    void applyMove_simpleStep_movesThePieceAndLeavesTheOriginSquareEmpty() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+
+        String result = engine.applyMove(board, true, move);
+        JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
+
+        assertEquals("b", pieces.getString("a4"));
+        assertFalse(pieces.has("b3"));
+        assertEquals(1, pieces.length());
+    }
+
+    @Test
+    void applyMove_singleCapture_removesTheCapturedPieceAndMovesToTheLandingSquare() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+
+        String result = engine.applyMove(board, true, move);
+        JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
+
+        assertEquals("b", pieces.getString("d5"));
+        assertFalse(pieces.has("b3"));
+        assertFalse(pieces.has("c4"));
+        assertEquals(1, pieces.length());
+    }
+
+    @Test
+    void applyMove_multiJumpChain_removesEveryCapturedPieceAlongThePath() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\",\"f7\"]}");
+
+        String result = engine.applyMove(board, true, move);
+        JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
+
+        assertEquals("b", pieces.getString("f7"));
+        assertEquals(1, pieces.length());
+    }
+
+    @Test
+    void applyMove_manReachingTheFarRank_promotesToKing() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b7\":\"b\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b7\",\"a8\"]}");
+
+        String result = engine.applyMove(board, true, move);
+        JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
+
+        assertEquals("B", pieces.getString("a8"));
+    }
+
+    @Test
+    void applyMove_kingDoesNotChangeSymbolWhenAlreadyCrowned() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c4\":\"B\"}}";
+        Move move = Move.fromJson("{\"path\":[\"c4\",\"b5\"]}");
+
+        String result = engine.applyMove(board, true, move);
+        JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
+
+        assertEquals("B", pieces.getString("b5"));
+    }
 }
