@@ -295,7 +295,7 @@ class CheckersEngineTest {
         assertEquals("b", pieces.getString("d3"));
         assertEquals("w", pieces.getString("a6"));
         assertEquals("w", pieces.getString("h7"));
-        assertEquals("w", pieces.getString("b8"));
+        assertEquals("w", pieces.getString("a8"));
 
         // The two middle ranks (4 and 5) start empty -- spot-check one square from each.
         assertEquals(false, pieces.has("a4"));
