@@ -50,16 +50,28 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         GameStateDTO result = matchmakingQueue.join(userId, gameTypeId);
 
         if (result != null) {
-            int opponentUserId = (result.getPlayer1Id() == userId)
-                    ? result.getPlayer2Id()
-                    : result.getPlayer1Id();
-            try {
-                gameEventPublisher.publishToPlayer(opponentUserId,
-                        new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result));
-            } catch (JmsPublishException e) {
-                // The pairing already committed to the DB -- a failed notification to the
-                // *other* player shouldn't fail this caller's own, already-successful result.
-                System.err.println("Failed to notify opponent " + opponentUserId + " of match: " + e.getMessage());
+            Integer opponentUserId;
+            if (result.getPlayer1Id() == userId) {
+                opponentUserId = result.getPlayer2Id();
+            } else if (result.getPlayer2Id() == userId) {
+                opponentUserId = result.getPlayer1Id();
+            } else {
+                // Caller isn't either participant in the session MatchmakingQueue.join() handed
+                // back -- that's a bug elsewhere, not something to guess an opponent for.
+                opponentUserId = null;
+                System.err.println("joinQueue: matched session " + result.getSessionId()
+                        + " does not include caller " + userId + " as either player -- skipping opponent notification");
+            }
+
+            if (opponentUserId != null) {
+                try {
+                    gameEventPublisher.publishToPlayer(opponentUserId,
+                            new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result));
+                } catch (JmsPublishException e) {
+                    // The pairing already committed to the DB -- a failed notification to the
+                    // *other* player shouldn't fail this caller's own, already-successful result.
+                    System.err.println("Failed to notify opponent " + opponentUserId + " of match: " + e.getMessage());
+                }
             }
         }
 

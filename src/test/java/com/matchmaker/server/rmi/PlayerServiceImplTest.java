@@ -8,6 +8,7 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
+import com.matchmaker.server.jms.FailingGameEventPublisher;
 import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -115,6 +116,24 @@ class PlayerServiceImplTest {
         playerService.joinQueue(sessionToken, 1);
 
         assertEquals(0, gameEventPublisher.published().size());
+    }
+
+    @Test
+    void joinQueue_publisherThrows_stillReturnsCallersOwnMatchedResult() throws Exception {
+        PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
+                sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, new FailingGameEventPublisher());
+        try {
+            String otherToken = sessionManager.createSession(2);
+            playerServiceWithFailingPublisher.joinQueue(otherToken, 1); // user 2 waits first
+
+            GameStateDTO result = assertDoesNotThrow(
+                    () -> playerServiceWithFailingPublisher.joinQueue(sessionToken, 1));
+
+            assertNotNull(result);
+            assertEquals(GameStatus.ACTIVE, result.getStatus());
+        } finally {
+            UnicastRemoteObject.unexportObject(playerServiceWithFailingPublisher, true);
+        }
     }
 
     @Test
