@@ -132,6 +132,19 @@ public class CheckersEngine implements GameEngine {
 
     @Override
     public GameResult checkWinner(String boardStateJson, boolean isPlayer1ToMoveNext) {
-        throw new UnsupportedOperationException("checkWinner not implemented yet -- see game-engine-implementation.md Task 8");
+        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
+        boolean hasPieces = false;
+        for (int row = 0; row < 8; row++) {
+            for (int col = 0; col < 8; col++) {
+                char piece = board.get(new Square(row, col));
+                if (piece != '.' && CheckersBoard.ownedBy(piece, isPlayer1ToMoveNext)) {
+                    hasPieces = true;
+                }
+            }
+        }
+        if (!hasPieces || legalMoves(board, isPlayer1ToMoveNext).isEmpty()) {
+            return isPlayer1ToMoveNext ? GameResult.PLAYER2_WINS : GameResult.PLAYER1_WINS;
+        }
+        return GameResult.CONTINUE;
     }
 }

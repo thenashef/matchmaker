@@ -230,4 +230,32 @@ class CheckersEngineTest {
 
         assertEquals("B", pieces.getString("b5"));
     }
+
+    @Test
+    void checkWinner_gameContinuesWhenBothSidesHavePiecesAndMoves() {
+        assertEquals(GameResult.CONTINUE, engine.checkWinner(engine.initialBoardState(), false));
+    }
+
+    @Test
+    void checkWinner_player2HasNoPiecesLeft_player1Wins() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+
+        assertEquals(GameResult.PLAYER1_WINS, engine.checkWinner(board, false));
+    }
+
+    @Test
+    void checkWinner_player1HasNoPiecesLeft_player2Wins() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"f7\":\"w\"}}";
+
+        assertEquals(GameResult.PLAYER2_WINS, engine.checkWinner(board, true));
+    }
+
+    @Test
+    void checkWinner_playerAboutToMoveHasPiecesButNoLegalMove_thatPlayerLoses() {
+        // A player2 man on b1 (rank 1) has no legal move: its forward direction (decreasing
+        // row, since player2 moves toward rank 1) is off the board entirely.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b1\":\"w\"}}";
+
+        assertEquals(GameResult.PLAYER1_WINS, engine.checkWinner(board, false));
+    }
 }
