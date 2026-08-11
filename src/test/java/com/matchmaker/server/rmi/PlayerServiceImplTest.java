@@ -2,11 +2,13 @@ package com.matchmaker.server.rmi;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
+import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +25,7 @@ class PlayerServiceImplTest {
     private InMemoryGameSessionDao gameSessionDao;
     private InMemoryGameTypeDao gameTypeDao;
     private InMemoryMatchmakingQueue matchmakingQueue;
+    private InMemoryGameEventPublisher gameEventPublisher;
     private PlayerServiceImpl playerService;
     private String sessionToken;
 
@@ -32,7 +35,8 @@ class PlayerServiceImplTest {
         gameSessionDao = new InMemoryGameSessionDao();
         gameTypeDao = new InMemoryGameTypeDao();
         matchmakingQueue = new InMemoryMatchmakingQueue();
-        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue);
+        gameEventPublisher = new InMemoryGameEventPublisher();
+        playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, gameEventPublisher);
         sessionToken = sessionManager.createSession(1);
     }
 
@@ -90,6 +94,27 @@ class PlayerServiceImplTest {
 
         assertNotNull(result);
         assertEquals(GameStatus.ACTIVE, result.getStatus());
+    }
+
+    @Test
+    void joinQueue_opponentWaiting_publishesMatchFoundEventToWaitingPlayer() throws Exception {
+        String otherToken = sessionManager.createSession(2);
+        playerService.joinQueue(otherToken, 1); // user 2 waits first
+
+        GameStateDTO result = playerService.joinQueue(sessionToken, 1); // user 1 (this test's default caller) matches them
+
+        assertEquals(1, gameEventPublisher.published().size());
+        InMemoryGameEventPublisher.PublishedEvent published = gameEventPublisher.published().get(0);
+        assertEquals(2, published.userId());
+        assertEquals(GameEventType.MATCH_FOUND, published.event().getType());
+        assertEquals(result.getSessionId(), published.event().getSessionId());
+    }
+
+    @Test
+    void joinQueue_noOpponentWaiting_doesNotPublishAnyEvent() throws Exception {
+        playerService.joinQueue(sessionToken, 1);
+
+        assertEquals(0, gameEventPublisher.published().size());
     }
 
     @Test

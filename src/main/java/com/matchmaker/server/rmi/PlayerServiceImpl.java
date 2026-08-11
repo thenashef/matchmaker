@@ -1,7 +1,9 @@
 package com.matchmaker.server.rmi;
 
+import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
 import com.matchmaker.common.exceptions.NotParticipantException;
@@ -10,6 +12,8 @@ import com.matchmaker.common.rmi.PlayerService;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.server.jms.GameEventPublisher;
+import com.matchmaker.server.jms.JmsPublishException;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
 
 import java.rmi.RemoteException;
@@ -22,14 +26,16 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     private final GameSessionDao gameSessionDao;
     private final GameTypeDao gameTypeDao;
     private final MatchmakingQueue matchmakingQueue;
+    private final GameEventPublisher gameEventPublisher;
 
     public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao,
-                              MatchmakingQueue matchmakingQueue) throws RemoteException {
+                              MatchmakingQueue matchmakingQueue, GameEventPublisher gameEventPublisher) throws RemoteException {
         super();
         this.sessionManager = sessionManager;
         this.gameSessionDao = gameSessionDao;
         this.gameTypeDao = gameTypeDao;
         this.matchmakingQueue = matchmakingQueue;
+        this.gameEventPublisher = gameEventPublisher;
     }
 
     @Override
@@ -41,7 +47,23 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     @Override
     public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws RemoteException, AuthenticationException {
         int userId = sessionManager.resolve(sessionToken);
-        return matchmakingQueue.join(userId, gameTypeId);
+        GameStateDTO result = matchmakingQueue.join(userId, gameTypeId);
+
+        if (result != null) {
+            int opponentUserId = (result.getPlayer1Id() == userId)
+                    ? result.getPlayer2Id()
+                    : result.getPlayer1Id();
+            try {
+                gameEventPublisher.publishToPlayer(opponentUserId,
+                        new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result));
+            } catch (JmsPublishException e) {
+                // The pairing already committed to the DB -- a failed notification to the
+                // *other* player shouldn't fail this caller's own, already-successful result.
+                System.err.println("Failed to notify opponent " + opponentUserId + " of match: " + e.getMessage());
+            }
+        }
+
+        return result;
     }
 
     @Override
