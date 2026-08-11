@@ -4,6 +4,8 @@ import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CheckersEngineTest {
 
@@ -33,5 +35,53 @@ class CheckersEngineTest {
 
         // Light squares are never occupied, even on the starting ranks.
         assertEquals(false, pieces.has("a1"));
+    }
+
+    @Test
+    void isLegalMove_manMovingOneStepDiagonallyForwardOntoEmptySquare_isLegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+
+        assertTrue(engine.isLegalMove(board, true, move));
+    }
+
+    @Test
+    void isLegalMove_manMovingBackward_isIllegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"a4\":\"b\"}}";
+        Move move = Move.fromJson("{\"path\":[\"a4\",\"b3\"]}");
+
+        assertFalse(engine.isLegalMove(board, true, move));
+    }
+
+    @Test
+    void isLegalMove_movingOntoOccupiedSquare_isIllegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"a4\":\"w\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+
+        assertFalse(engine.isLegalMove(board, true, move));
+    }
+
+    @Test
+    void isLegalMove_nonDiagonalStep_isIllegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+        Move move = Move.fromJson("{\"path\":[\"b3\",\"b4\"]}");
+
+        assertFalse(engine.isLegalMove(board, true, move));
+    }
+
+    @Test
+    void isLegalMove_movingOpponentsPiece_isIllegal() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c4\":\"w\"}}";
+        Move move = Move.fromJson("{\"path\":[\"c4\",\"b5\"]}");
+
+        assertFalse(engine.isLegalMove(board, true, move));
+    }
+
+    @Test
+    void isLegalMove_kingMovesEitherDiagonalDirection() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"e4\":\"B\"}}";
+
+        assertTrue(engine.isLegalMove(board, true, Move.fromJson("{\"path\":[\"e4\",\"f5\"]}")));
+        assertTrue(engine.isLegalMove(board, true, Move.fromJson("{\"path\":[\"e4\",\"d3\"]}")));
     }
 }
