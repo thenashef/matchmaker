@@ -7,12 +7,18 @@ import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
 import com.matchmaker.server.dao.JdbcUserDao;
 import com.matchmaker.server.dao.UserDao;
+import com.matchmaker.server.jms.ActiveMqGameEventPublisher;
+import com.matchmaker.server.jms.GameEventPublisher;
+import com.matchmaker.server.jms.JmsConnectionFactory;
 import com.matchmaker.server.matchmaking.JdbcMatchmakingQueue;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import com.matchmaker.server.rmi.AdminServiceImpl;
 import com.matchmaker.server.rmi.AuthServiceImpl;
 import com.matchmaker.server.rmi.PlayerServiceImpl;
 
+import javax.jms.Connection;
+import javax.jms.JMSException;
+import javax.jms.Session;
 import javax.sql.DataSource;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -35,7 +41,7 @@ public class ServerMain {
         Thread.currentThread().join();
     }
 
-    public static Registry start(int port) throws RemoteException {
+    public static Registry start(int port) throws RemoteException, JMSException {
         return startWithImpls(port).registry();
     }
 
@@ -45,7 +51,7 @@ public class ServerMain {
      * teardown -- {@code registry.lookup(...)} only ever returns a client-side stub, which
      * can't be passed to {@code UnicastRemoteObject.unexportObject}.
      */
-    static Started startWithImpls(int port) throws RemoteException {
+    static Started startWithImpls(int port) throws RemoteException, JMSException {
         SessionManager sessionManager = new SessionManager();
 
         DataSource dataSource = DataSourceFactory.create();
@@ -54,9 +60,13 @@ public class ServerMain {
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
         MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
 
+        Connection jmsConnection = JmsConnectionFactory.create();
+        Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+        GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
+
         Registry registry = LocateRegistry.createRegistry(port);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
-        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue);
+        PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, gameEventPublisher);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager);
 
         registry.rebind("AuthService", authService);
