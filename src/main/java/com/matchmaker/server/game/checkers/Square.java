@@ -1,4 +1,4 @@
-package com.matchmaker.server.game;
+package com.matchmaker.server.game.checkers;
 
 public record Square(int row, int col) {
 

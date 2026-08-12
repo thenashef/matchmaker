@@ -1,5 +1,6 @@
-package com.matchmaker.server.game;
+package com.matchmaker.server.game.checkers;
 
+import com.matchmaker.server.game.GameResult;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -12,8 +13,8 @@ class CheckersEngineTest {
     private final CheckersEngine engine = new CheckersEngine();
 
     @Test
-    void initialBoardState_hasTwelvePiecesPerSideOnTheStandardSquares() {
-        JSONObject board = new JSONObject(engine.initialBoardState());
+    void initialState_hasTwelvePiecesPerSideOnTheStandardSquares() {
+        JSONObject board = new JSONObject(engine.initialState());
 
         assertEquals(8, board.getInt("rows"));
         assertEquals(8, board.getInt("cols"));
@@ -40,7 +41,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_manMovingOneStepDiagonallyForwardOntoEmptySquare_isLegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+        String move = "{\"path\":[\"b3\",\"a4\"]}";
 
         assertTrue(engine.isLegalMove(board, true, move));
     }
@@ -48,7 +49,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_manMovingBackward_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"a4\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"a4\",\"b3\"]}");
+        String move = "{\"path\":[\"a4\",\"b3\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -56,7 +57,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_movingOntoOccupiedSquare_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"a4\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+        String move = "{\"path\":[\"b3\",\"a4\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -64,7 +65,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_nonDiagonalStep_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"b4\"]}");
+        String move = "{\"path\":[\"b3\",\"b4\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -72,7 +73,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_movingOpponentsPiece_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c4\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"c4\",\"b5\"]}");
+        String move = "{\"path\":[\"c4\",\"b5\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -81,14 +82,14 @@ class CheckersEngineTest {
     void isLegalMove_kingMovesEitherDiagonalDirection() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"e4\":\"B\"}}";
 
-        assertTrue(engine.isLegalMove(board, true, Move.fromJson("{\"path\":[\"e4\",\"f5\"]}")));
-        assertTrue(engine.isLegalMove(board, true, Move.fromJson("{\"path\":[\"e4\",\"d3\"]}")));
+        assertTrue(engine.isLegalMove(board, true, "{\"path\":[\"e4\",\"f5\"]}"));
+        assertTrue(engine.isLegalMove(board, true, "{\"path\":[\"e4\",\"d3\"]}"));
     }
 
     @Test
     void isLegalMove_jumpingOverAdjacentOpponentOntoEmptySquare_isLegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+        String move = "{\"path\":[\"b3\",\"d5\"]}";
 
         assertTrue(engine.isLegalMove(board, true, move));
     }
@@ -96,7 +97,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_jumpingWithNoOpponentToCapture_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+        String move = "{\"path\":[\"b3\",\"d5\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -104,7 +105,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_jumpingOntoOccupiedLandingSquare_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"d5\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+        String move = "{\"path\":[\"b3\",\"d5\"]}";
 
         assertFalse(engine.isLegalMove(board, true, move));
     }
@@ -114,7 +115,7 @@ class CheckersEngineTest {
         // b3 could step to a4, but c4 is capturable via a jump to d5, so ONLY the
         // capture is legal -- the simple step is not, even though it's otherwise valid.
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\"}}";
-        Move simpleStep = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+        String simpleStep = "{\"path\":[\"b3\",\"a4\"]}";
 
         assertFalse(engine.isLegalMove(board, true, simpleStep));
     }
@@ -124,7 +125,7 @@ class CheckersEngineTest {
         // f3 has no capture available itself, but b3 does (over c4 to d5) -- since a
         // capture exists SOMEWHERE for player1, f3's simple step is illegal too.
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"f3\":\"b\"}}";
-        Move otherPieceStep = Move.fromJson("{\"path\":[\"f3\",\"e4\"]}");
+        String otherPieceStep = "{\"path\":[\"f3\",\"e4\"]}";
 
         assertFalse(engine.isLegalMove(board, true, otherPieceStep));
     }
@@ -133,7 +134,7 @@ class CheckersEngineTest {
     void isLegalMove_multiJumpChain_isLegalAsOnePath() {
         // b3 jumps c4 landing d5, then must continue: jumps e6 landing f7.
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
-        Move chain = Move.fromJson("{\"path\":[\"b3\",\"d5\",\"f7\"]}");
+        String chain = "{\"path\":[\"b3\",\"d5\",\"f7\"]}";
 
         assertTrue(engine.isLegalMove(board, true, chain));
     }
@@ -141,7 +142,7 @@ class CheckersEngineTest {
     @Test
     void isLegalMove_multiJumpChain_stoppingEarlyWhenAFurtherJumpIsAvailable_isIllegal() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
-        Move stoppedEarly = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+        String stoppedEarly = "{\"path\":[\"b3\",\"d5\"]}";
 
         assertFalse(engine.isLegalMove(board, true, stoppedEarly));
     }
@@ -153,7 +154,7 @@ class CheckersEngineTest {
         // one-jump capture, no further jump available from h5). Both are legal choices --
         // majority-capture is not enforced.
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\",\"f3\":\"b\",\"g4\":\"w\"}}";
-        Move shorterOption = Move.fromJson("{\"path\":[\"f3\",\"h5\"]}");
+        String shorterOption = "{\"path\":[\"f3\",\"h5\"]}";
 
         assertTrue(engine.isLegalMove(board, true, shorterOption));
     }
@@ -163,8 +164,8 @@ class CheckersEngineTest {
         // c6 (player1 man) jumps d7 landing e8 -- e8 is the promotion rank, so the chain
         // ends there even though a king at e8 could otherwise jump f7 to g6.
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c6\":\"b\",\"d7\":\"w\",\"f7\":\"w\"}}";
-        Move stopsAtPromotion = Move.fromJson("{\"path\":[\"c6\",\"e8\"]}");
-        Move triesToContinuePastPromotion = Move.fromJson("{\"path\":[\"c6\",\"e8\",\"g6\"]}");
+        String stopsAtPromotion = "{\"path\":[\"c6\",\"e8\"]}";
+        String triesToContinuePastPromotion = "{\"path\":[\"c6\",\"e8\",\"g6\"]}";
 
         assertTrue(engine.isLegalMove(board, true, stopsAtPromotion));
         assertFalse(engine.isLegalMove(board, true, triesToContinuePastPromotion));
@@ -173,7 +174,7 @@ class CheckersEngineTest {
     @Test
     void applyMove_simpleStep_movesThePieceAndLeavesTheOriginSquareEmpty() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"a4\"]}");
+        String move = "{\"path\":[\"b3\",\"a4\"]}";
 
         String result = engine.applyMove(board, true, move);
         JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
@@ -186,7 +187,7 @@ class CheckersEngineTest {
     @Test
     void applyMove_singleCapture_removesTheCapturedPieceAndMovesToTheLandingSquare() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\"]}");
+        String move = "{\"path\":[\"b3\",\"d5\"]}";
 
         String result = engine.applyMove(board, true, move);
         JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
@@ -200,7 +201,7 @@ class CheckersEngineTest {
     @Test
     void applyMove_multiJumpChain_removesEveryCapturedPieceAlongThePath() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b3\",\"d5\",\"f7\"]}");
+        String move = "{\"path\":[\"b3\",\"d5\",\"f7\"]}";
 
         String result = engine.applyMove(board, true, move);
         JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
@@ -212,7 +213,7 @@ class CheckersEngineTest {
     @Test
     void applyMove_manReachingTheFarRank_promotesToKing() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b7\":\"b\"}}";
-        Move move = Move.fromJson("{\"path\":[\"b7\",\"a8\"]}");
+        String move = "{\"path\":[\"b7\",\"a8\"]}";
 
         String result = engine.applyMove(board, true, move);
         JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
@@ -223,7 +224,7 @@ class CheckersEngineTest {
     @Test
     void applyMove_kingDoesNotChangeSymbolWhenAlreadyCrowned() {
         String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"c4\":\"B\"}}";
-        Move move = Move.fromJson("{\"path\":[\"c4\",\"b5\"]}");
+        String move = "{\"path\":[\"c4\",\"b5\"]}";
 
         String result = engine.applyMove(board, true, move);
         JSONObject pieces = new JSONObject(result).getJSONObject("pieces");
@@ -233,7 +234,7 @@ class CheckersEngineTest {
 
     @Test
     void checkWinner_gameContinuesWhenBothSidesHavePiecesAndMoves() {
-        assertEquals(GameResult.CONTINUE, engine.checkWinner(engine.initialBoardState(), false));
+        assertEquals(GameResult.CONTINUE, engine.checkWinner(engine.initialState(), false));
     }
 
     @Test

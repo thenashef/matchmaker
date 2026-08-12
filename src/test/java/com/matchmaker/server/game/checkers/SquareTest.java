@@ -1,4 +1,4 @@
-package com.matchmaker.server.game;
+package com.matchmaker.server.game.checkers;
 
 import org.junit.jupiter.api.Test;
 

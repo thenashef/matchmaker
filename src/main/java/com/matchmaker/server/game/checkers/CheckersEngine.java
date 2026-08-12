@@ -1,4 +1,7 @@
-package com.matchmaker.server.game;
+package com.matchmaker.server.game.checkers;
+
+import com.matchmaker.server.game.GameEngine;
+import com.matchmaker.server.game.GameResult;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,13 +13,19 @@ public class CheckersEngine implements GameEngine {
     private static final int[][] KING_DIRECTIONS = {{1, -1}, {1, 1}, {-1, -1}, {-1, 1}};
 
     @Override
-    public String initialBoardState() {
+    public String initialState() {
         return CheckersBoard.initial().toJson();
     }
 
     @Override
-    public boolean isLegalMove(String boardStateJson, boolean isPlayer1Turn, Move move) {
-        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
+    public boolean isLegalMove(String stateJson, boolean isPlayer1Turn, String movePayloadJson) {
+        Move move;
+        try {
+            move = Move.fromJson(movePayloadJson);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        CheckersBoard board = CheckersBoard.fromJson(stateJson);
         for (Move legal : legalMoves(board, isPlayer1Turn)) {
             if (legal.getPath().equals(move.getPath())) {
                 return true;
@@ -104,12 +113,13 @@ public class CheckersEngine implements GameEngine {
     }
 
     @Override
-    public String applyMove(String boardStateJson, boolean isPlayer1Turn, Move move) {
+    public String applyMove(String stateJson, boolean isPlayer1Turn, String movePayloadJson) {
+        Move move = Move.fromJson(movePayloadJson);
         List<Square> path = move.getPath();
         if (path.size() < 2) {
             throw new IllegalArgumentException("A move must have at least a from and a to square, got: " + path);
         }
-        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
+        CheckersBoard board = CheckersBoard.fromJson(stateJson);
         Square from = path.get(0);
         if (board.isEmpty(from)) {
             throw new IllegalStateException("applyMove called with no piece on origin square " + from.toAlgebraic()
@@ -138,8 +148,8 @@ public class CheckersEngine implements GameEngine {
     }
 
     @Override
-    public GameResult checkWinner(String boardStateJson, boolean isPlayer1ToMoveNext) {
-        CheckersBoard board = CheckersBoard.fromJson(boardStateJson);
+    public GameResult checkWinner(String stateJson, boolean isPlayer1ToMoveNext) {
+        CheckersBoard board = CheckersBoard.fromJson(stateJson);
         boolean hasPieces = false;
         for (int row = 0; row < 8; row++) {
             for (int col = 0; col < 8; col++) {

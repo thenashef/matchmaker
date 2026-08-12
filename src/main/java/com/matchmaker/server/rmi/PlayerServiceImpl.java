@@ -16,7 +16,6 @@ import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
 import com.matchmaker.server.game.GameEngine;
 import com.matchmaker.server.game.GameResult;
-import com.matchmaker.server.game.Move;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
@@ -107,25 +106,18 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
         }
 
-        Move move;
-        try {
-            move = Move.fromJson(movePayload);
-        } catch (RuntimeException e) {
-            throw new IllegalMoveException("Malformed move payload: " + e.getMessage());
-        }
-
         // Matchmaking creates a session with no BoardState (see JdbcMatchmakingQueue.join())
         // -- the very first move of a game has nothing to read yet, so fall back to the
         // engine's starting position rather than passing null through to it.
         String currentBoardState = session.getBoardState() != null
-                ? session.getBoardState() : gameEngine.initialBoardState();
+                ? session.getBoardState() : gameEngine.initialState();
 
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
-        if (!gameEngine.isLegalMove(currentBoardState, isPlayer1Turn, move)) {
+        if (!gameEngine.isLegalMove(currentBoardState, isPlayer1Turn, movePayload)) {
             throw new IllegalMoveException("Illegal move for session " + gameSessionId + ": " + movePayload);
         }
 
-        String newBoardState = gameEngine.applyMove(currentBoardState, isPlayer1Turn, move);
+        String newBoardState = gameEngine.applyMove(currentBoardState, isPlayer1Turn, movePayload);
         GameResult result = gameEngine.checkWinner(newBoardState, !isPlayer1Turn);
 
         int opponentId = isPlayer1Turn ? session.getPlayer2Id() : session.getPlayer1Id();

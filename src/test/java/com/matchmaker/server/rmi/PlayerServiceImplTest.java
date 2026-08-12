@@ -11,7 +11,7 @@ import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
-import com.matchmaker.server.game.CheckersEngine;
+import com.matchmaker.server.game.checkers.CheckersEngine;
 import com.matchmaker.server.jms.FailingGameEventPublisher;
 import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
@@ -168,7 +168,7 @@ class PlayerServiceImplTest {
 
     @Test
     void makeMove_legalMove_appliesItAndReturnsUpdatedState() throws Exception {
-        String initialBoard = new CheckersEngine().initialBoardState();
+        String initialBoard = new CheckersEngine().initialState();
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
 
         GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
@@ -186,12 +186,12 @@ class PlayerServiceImplTest {
         GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
 
         assertEquals(2, result.getCurrentTurnUserId());
-        assertNotEquals(new CheckersEngine().initialBoardState(), result.getBoardState());
+        assertNotEquals(new CheckersEngine().initialState(), result.getBoardState());
     }
 
     @Test
     void makeMove_notAParticipant_throwsNotParticipantException() throws Exception {
-        String initialBoard = new CheckersEngine().initialBoardState();
+        String initialBoard = new CheckersEngine().initialState();
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 2, 3, GameStatus.ACTIVE, 2, null, initialBoard));
 
         assertThrows(NotParticipantException.class,
@@ -200,7 +200,7 @@ class PlayerServiceImplTest {
 
     @Test
     void makeMove_notYourTurn_throwsNotYourTurnException() throws Exception {
-        String initialBoard = new CheckersEngine().initialBoardState();
+        String initialBoard = new CheckersEngine().initialState();
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 2, null, initialBoard));
 
         assertThrows(NotYourTurnException.class,
@@ -209,7 +209,7 @@ class PlayerServiceImplTest {
 
     @Test
     void makeMove_illegalMove_throwsIllegalMoveException() throws Exception {
-        String initialBoard = new CheckersEngine().initialBoardState();
+        String initialBoard = new CheckersEngine().initialState();
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
 
         assertThrows(IllegalMoveException.class,
