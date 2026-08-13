@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.matchmaker.client.presentation.LoginController"
+      spacing="12" alignment="CENTER">
+    <padding><Insets top="40" right="40" bottom="40" left="40"/></padding>
+    <Label text="MatchMaker" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+    <TextField fx:id="usernameField" promptText="Username" maxWidth="240"/>
+    <PasswordField fx:id="passwordField" promptText="Password" maxWidth="240"/>
+    <HBox spacing="10" alignment="CENTER">
+        <Button fx:id="loginButton" text="Login" onAction="#onLogin"/>
+        <Button fx:id="registerButton" text="Register" onAction="#onRegister"/>
+    </HBox>
+    <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="280"/>
+</VBox>
