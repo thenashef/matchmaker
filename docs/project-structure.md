@@ -12,6 +12,8 @@ matchmaker/
 ├── MatchMaker_Spec_EN.md      English translation of the spec
 ├── docker-compose.yml         Local MySQL for dev + the 4 DB-integration test classes
 ├── db/                        SQL schema/seed scripts applied to the Dockerized MySQL
+│                              (schema.sql auto-applies on first boot; seed-demo-users.sql is
+│                               opt-in, run it yourself when you want demo player/admin accounts)
 ├── docs/                      All project documentation (see below)
 ├── src/main/java/...          Production code
 ├── src/main/resources/        db.properties (JDBC URL/credentials for DataSourceFactory)
