@@ -5,13 +5,19 @@
 <?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.shape.Circle?>
 
 <BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.matchmaker.client.presentation.GameBoardController">
     <top>
-        <Label fx:id="statusLabel" style="-fx-font-size: 16px;">
+        <VBox spacing="6">
             <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
-        </Label>
+            <HBox spacing="8" alignment="CENTER_LEFT">
+                <Circle fx:id="colorIndicator" radius="8" stroke="GRAY" strokeWidth="1"/>
+                <Label fx:id="colorLabel" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            </HBox>
+            <Label fx:id="statusLabel" style="-fx-font-size: 16px;"/>
+        </VBox>
     </top>
     <center>
         <!-- 480x480 = BOARD_SIZE (8) times the 60px cell size GameBoardController builds cells at:

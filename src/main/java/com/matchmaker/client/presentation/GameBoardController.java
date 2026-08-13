@@ -20,6 +20,8 @@ public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
 
+    @FXML private Circle colorIndicator;
+    @FXML private Label colorLabel;
     @FXML private Label statusLabel;
     @FXML private GridPane boardGrid;
     @FXML private Button submitButton;
@@ -41,6 +43,7 @@ public class GameBoardController {
     private void applyState(GameStateDTO state) {
         this.currentState = state;
         selectedPath.clear();
+        updateColorIndicator();
         renderBoard(state);
         updateStatusLabel(state);
 
@@ -66,20 +69,32 @@ public class GameBoardController {
         }
     }
 
+    private void updateColorIndicator() {
+        boolean player1 = isPlayer1();
+        colorIndicator.setFill(player1 ? Color.BLACK : Color.WHITE);
+        colorLabel.setText("You are playing " + (player1 ? "Black" : "White"));
+    }
+
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
         JSONObject board = new JSONObject(state.getBoardState());
         JSONObject pieces = board.getJSONObject("pieces");
+
+        // Each player sees their own color at the bottom, like sitting on opposite sides of the
+        // same physical board -- Black (player1) gets the un-flipped orientation (rank 1 at the
+        // bottom); White (player2) gets the whole board rotated 180 degrees (both rank and file
+        // reversed), not just mirrored vertically, so it looks like the same board turned around
+        // rather than a reflection of it.
+        boolean flip = !isPlayer1();
 
         for (int row = 0; row < BOARD_SIZE; row++) {
             for (int col = 0; col < BOARD_SIZE; col++) {
                 boolean dark = (row + col) % 2 == 1;
                 String algebraic = toAlgebraic(row, col);
                 StackPane cell = buildCell(dark, algebraic, pieces);
-                // Rank 1 (row 0) renders at the bottom of the screen, rank 8 at the top --
-                // standard board orientation, fixed regardless of which player is viewing
-                // (see design doc's Out of scope: no per-player board flip).
-                boardGrid.add(cell, col, BOARD_SIZE - 1 - row);
+                int displayRow = flip ? row : (BOARD_SIZE - 1 - row);
+                int displayCol = flip ? (BOARD_SIZE - 1 - col) : col;
+                boardGrid.add(cell, displayCol, displayRow);
             }
         }
     }
@@ -164,9 +179,12 @@ public class GameBoardController {
             return false;
         }
         char piece = pieces.getString(algebraic).charAt(0);
-        boolean isPlayer1 = currentState.getPlayer1Id() == gameClientService.getCurrentUser().getId();
         boolean pieceIsPlayer1 = Character.toLowerCase(piece) == 'b';
-        return isPlayer1 == pieceIsPlayer1;
+        return isPlayer1() == pieceIsPlayer1;
+    }
+
+    private boolean isPlayer1() {
+        return currentState.getPlayer1Id() == gameClientService.getCurrentUser().getId();
     }
 
     private static String toAlgebraic(int row, int col) {
