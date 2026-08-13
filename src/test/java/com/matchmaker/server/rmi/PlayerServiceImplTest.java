@@ -221,4 +221,36 @@ class PlayerServiceImplTest {
         assertThrows(IllegalMoveException.class,
                 () -> playerService.makeMove(sessionToken, 999, "{\"path\":[\"b3\",\"a4\"]}"));
     }
+
+    @Test
+    void makeMove_legalMove_publishesMoveMadeEventToSession() throws Exception {
+        String initialBoard = new CheckersEngine().initialState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
+
+        GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
+
+        assertEquals(1, gameEventPublisher.publishedToSessions().size());
+        InMemoryGameEventPublisher.PublishedSessionEvent published = gameEventPublisher.publishedToSessions().get(0);
+        assertEquals(1, published.sessionId());
+        assertEquals(GameEventType.MOVE_MADE, published.event().getType());
+        assertEquals(result.getCurrentTurnUserId(), published.event().getGameState().getCurrentTurnUserId());
+    }
+
+    @Test
+    void makeMove_publisherThrows_stillReturnsCallersOwnUpdatedState() throws Exception {
+        PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
+                sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
+                new FailingGameEventPublisher(), new CheckersEngine());
+        try {
+            String initialBoard = new CheckersEngine().initialState();
+            gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
+
+            GameStateDTO result = assertDoesNotThrow(
+                    () -> playerServiceWithFailingPublisher.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}"));
+
+            assertEquals(2, result.getCurrentTurnUserId());
+        } finally {
+            UnicastRemoteObject.unexportObject(playerServiceWithFailingPublisher, true);
+        }
+    }
 }

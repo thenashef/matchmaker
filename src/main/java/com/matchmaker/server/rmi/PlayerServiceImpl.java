@@ -132,8 +132,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                     session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.FINISHED, null, winnerId, newBoardState);
         }
 
+        GameStateDTO persistedSession;
         try {
-            return gameSessionDao.recordMove(updatedSession, userId, movePayload);
+            persistedSession = gameSessionDao.recordMove(updatedSession, userId, movePayload);
         } catch (ConcurrentGameUpdateException e) {
             // Someone else's call for this same session committed first since we read it --
             // from this caller's perspective that means the turn/status they validated
@@ -141,6 +142,17 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             throw new NotYourTurnException("Session " + gameSessionId + " changed since it was read -- "
                     + "it is no longer user " + userId + "'s turn (or the game already ended)");
         }
+
+        try {
+            gameEventPublisher.publishToSession(gameSessionId,
+                    new GameEventDTO(GameEventType.MOVE_MADE, gameSessionId, persistedSession));
+        } catch (JmsPublishException e) {
+            // The move already committed to the DB -- a failed notification shouldn't undo or
+            // fail the mover's own already-successful result. Mirrors joinQueue()'s handling.
+            System.err.println("Failed to notify session " + gameSessionId + " of move: " + e.getMessage());
+        }
+
+        return persistedSession;
     }
 
     @Override
