@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.matchmaker.admin.presentation.DashboardController"
+      spacing="10">
+    <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+    <Label text="Dashboard" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <HBox spacing="20">
+        <Label fx:id="userCountLabel"/>
+        <Label fx:id="activeSessionCountLabel"/>
+    </HBox>
+    <Label text="Active Sessions" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+    <TableView fx:id="sessionsTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="sessionIdColumn" text="Session" prefWidth="80"/>
+            <TableColumn fx:id="gameTypeIdColumn" text="Game Type" prefWidth="90"/>
+            <TableColumn fx:id="player1Column" text="Player 1" prefWidth="90"/>
+            <TableColumn fx:id="player2Column" text="Player 2" prefWidth="90"/>
+            <TableColumn fx:id="turnColumn" text="Turn" prefWidth="90"/>
+            <TableColumn fx:id="monitorColumn" text="" prefWidth="100"/>
+        </columns>
+    </TableView>
+    <HBox spacing="10">
+        <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
+        <Button fx:id="newGameTypeButton" text="New Game Type" onAction="#onNewGameType"/>
+    </HBox>
+    <Label fx:id="statusLabel" textFill="#b00020" wrapText="true"/>
+</VBox>

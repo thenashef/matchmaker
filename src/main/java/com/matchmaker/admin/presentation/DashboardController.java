@@ -1,0 +1,92 @@
+package com.matchmaker.admin.presentation;
+
+import com.matchmaker.admin.logic.AdminClientService;
+import com.matchmaker.common.dto.GameStateDTO;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.fxml.FXML;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TableCell;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableView;
+import javafx.util.Callback;
+
+public class DashboardController {
+
+    @FXML private Label userCountLabel;
+    @FXML private Label activeSessionCountLabel;
+    @FXML private TableView<GameStateDTO> sessionsTable;
+    @FXML private TableColumn<GameStateDTO, Number> sessionIdColumn;
+    @FXML private TableColumn<GameStateDTO, Number> gameTypeIdColumn;
+    @FXML private TableColumn<GameStateDTO, Number> player1Column;
+    @FXML private TableColumn<GameStateDTO, Number> player2Column;
+    @FXML private TableColumn<GameStateDTO, String> turnColumn;
+    @FXML private TableColumn<GameStateDTO, Void> monitorColumn;
+    @FXML private Button refreshButton;
+    @FXML private Button newGameTypeButton;
+    @FXML private Label statusLabel;
+
+    private AdminClientService adminClientService;
+    private SceneNavigator navigator;
+
+    public void init(AdminClientService adminClientService, SceneNavigator navigator) {
+        this.adminClientService = adminClientService;
+        this.navigator = navigator;
+
+        sessionIdColumn.setCellValueFactory(data -> new SimpleIntegerProperty(data.getValue().getSessionId()));
+        gameTypeIdColumn.setCellValueFactory(data -> new SimpleIntegerProperty(data.getValue().getGameTypeId()));
+        player1Column.setCellValueFactory(data -> new SimpleIntegerProperty(data.getValue().getPlayer1Id()));
+        player2Column.setCellValueFactory(data -> new SimpleIntegerProperty(data.getValue().getPlayer2Id()));
+        turnColumn.setCellValueFactory(data -> new SimpleStringProperty(
+                data.getValue().getCurrentTurnUserId() == null ? "-" : String.valueOf(data.getValue().getCurrentTurnUserId())));
+        monitorColumn.setCellFactory(monitorButtonCellFactory());
+
+        refresh();
+    }
+
+    @FXML
+    private void onRefresh() {
+        refresh();
+    }
+
+    private void refresh() {
+        adminClientService.listUsers(
+                users -> userCountLabel.setText("Users: " + users.size()),
+                error -> statusLabel.setText(error.getMessage()));
+
+        adminClientService.listActiveSessions(
+                sessions -> {
+                    activeSessionCountLabel.setText("Active sessions: " + sessions.size());
+                    sessionsTable.getItems().setAll(sessions);
+                },
+                error -> statusLabel.setText(error.getMessage()));
+    }
+
+    @FXML
+    private void onNewGameType() {
+        AddGameTypeController controller = navigator.show("AddGameTypeView.fxml", "MatchMaker Admin - New Game Type");
+        controller.init(adminClientService, navigator);
+    }
+
+    private Callback<TableColumn<GameStateDTO, Void>, TableCell<GameStateDTO, Void>> monitorButtonCellFactory() {
+        return column -> new TableCell<>() {
+            private final Button monitorButton = new Button("Monitor");
+
+            {
+                monitorButton.setOnAction(event -> {
+                    GameStateDTO session = getTableView().getItems().get(getIndex());
+                    LiveSessionMonitorController controller = navigator.show(
+                            "LiveSessionMonitorView.fxml", "MatchMaker Admin - Live Session Monitor");
+                    controller.init(adminClientService, navigator, session);
+                });
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : monitorButton);
+            }
+        };
+    }
+}
