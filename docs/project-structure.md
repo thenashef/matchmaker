@@ -23,18 +23,20 @@ matchmaker/
 Build/run commands, from the project root (requires `JAVA_HOME` pointed at a JDK 21):
 ```bash
 mvn compile     # compile only
-mvn test        # compile + run all tests
+mvn test        # compile + run all tests -- always safe against real dev/demo data, see matchmaker_test below
 ```
-`ServerMain` is a real runnable entry point once compiled. A bare `java -cp target/classes ...` no longer works — this branch added runtime dependencies (HikariCP, mysql-connector-j, jbcrypt) that aren't on that classpath, and there's no shade/assembly plugin bundling them. Instead, run it through Maven, which already knows the full dependency classpath:
+Three separate runnable processes, all via Maven so the full dependency classpath is always resolved (a bare `java -cp target/classes ...` doesn't work — runtime deps like HikariCP/mysql-connector-j/jbcrypt/JavaFX aren't on that bare classpath, and there's no shade/assembly plugin bundling them):
 ```bash
-mvn exec:java
+mvn exec:java              # ServerMain -- RMI registry on port 1099, JMS broker on tcp://localhost:61616
+mvn javafx:run             # ClientMain -- the player client
+mvn javafx:run -Padmin     # AdminMain -- the admin client (a Maven profile swaps javafx-maven-plugin's mainClass)
 ```
-(`exec-maven-plugin` is configured in `pom.xml` with `com.matchmaker.server.ServerMain` as the default main class, so no `-Dexec.mainClass` is needed.) Starts an RMI registry on port 1099 and binds `AuthService`, `PlayerService`, `AdminService`.
+Run one server plus one or more player clients (and optionally the admin client) side by side to actually play/administer. `db/seed-demo-users.sql` (opt-in, not auto-applied) creates `playera`/`playerb`/`admin` accounts for trying this without registering through the UI first.
 
 ## `src/main/java/com/matchmaker/` — production code
 
 ### `common/` — shared between server and every client
-Nothing in `common` has any real behavior — it's the *contract* both the server and every client (player, admin) compile against. Neither client exists yet (steps 8–9), but the contract is written so they can be built independently once the server side is ready.
+Nothing in `common` has any real behavior — it's the *contract* the server and both clients (player, admin) compile against.
 
 - **`common/dto/`** — plain, `Serializable` data-holder classes that cross the network via RMI (and later JMS). Each mirrors either a database table (per the spec) or a request/response shape:
   - `UserDTO` — a user's public profile (no password field — that never leaves the server).
@@ -81,7 +83,7 @@ Same three-package split as `client/`, per spec §4:
 
 ## `src/test/java/com/matchmaker/` — tests
 
-Mirrors the main tree package-for-package. Six different kinds of test appear, deliberately:
+Mirrors the main tree package-for-package. Seven different kinds of test appear, deliberately:
 
 1. **Plain unit tests** (`SessionManagerTest`, `AuthServiceImplTest`, `PlayerServiceImplTest`, `AdminServiceImplTest`, the exception hierarchy test) — call methods directly as ordinary Java objects, no networking at all. Fast, and they isolate business logic from RMI plumbing.
 2. **Serialization round-trip tests** (`NewDtoSerializationTest`, `ExistingDtoSerializationTest`) — actually serialize a DTO to bytes and back (`ObjectOutputStream`/`ObjectInputStream`), the same mechanism RMI uses internally. Proves the DTOs are RMI-safe, not just that they compile.
@@ -89,6 +91,7 @@ Mirrors the main tree package-for-package. Six different kinds of test appear, d
 4. **DB-integration tests** (`UserDaoTest`, `GameTypeDaoTest`, `GameSessionDaoTest`, `MatchmakingQueueTest`, `DataSourceFactoryTest`) — run real SQL against a real MySQL, started with `docker compose up -d` (see `docker-compose.yml` / `db/schema.sql`), clearing every table in `@BeforeEach` via a shared `TestDatabase.cleanAll(DataSource)` helper (`src/test/java/com/matchmaker/server/TestDatabase.java`) and inserting whatever fixture rows each test needs. These are the *only* tests in the whole suite that require Docker; everything else in this list stays Docker-free. `GameSessionDaoTest` is the one to look at for a real ELO-transaction example and for the concurrent-`recordMove()`-rejection test. **These run against `matchmaker_test`, a database entirely separate from the real `matchmaker`** (`src/test/resources/db.properties` overrides `DataSourceFactory`'s config purely by being on the test classpath — no code involved), so their per-test table-clearing can never touch dev/demo data sitting in `matchmaker`.
 5. **Real JMS integration tests** (`GameEventPublisherJmsIntegrationTest`, `JmsConnectionFactoryTest`) — same idea as the RMI integration tier, but for the async side: a real `MessageConsumer` receives a real published `ObjectMessage` over an actual (embedded, in-process) ActiveMQ broker. Docker-free, since the broker is `vm://`-embedded rather than a separate process.
 6. **Pure rules-engine tests** (`server/game/checkers/CheckersEngineTest`, `SquareTest`, `MoveTest`) — no DB, no RMI, no JMS; call `CheckersEngine` directly. `CheckersEngineTest` is the largest single test class in the suite (25 tests) and the one most worth reading before extending the rules engine — every test board is a small, explicit JSON literal built from verified `(row+col)%2` parity math, not the full starting position, specifically so each rule (single step, capture, multi-jump chain, promotion, mandatory capture, win detection) can be tested in isolation. **If you add a new test board position, verify the square colors with actual arithmetic before trusting a hand-picked algebraic name** — this bit twice during Milestone 6 (see `build-plan.md`).
+7. **Client/admin Logic-layer tests** (`client/logic/GameClientServiceTest`, `admin/logic/AdminClientServiceTest`) — no RMI/JMS/Docker, but *do* need the real JavaFX `Platform` runtime, since `GameClientService`/`AdminClientService` call `Platform.runLater(...)` internally. Both test classes share the same two-part pattern: a `@BeforeAll` that calls `Platform.startup(...)` and blocks on a real round-trip through it before any test runs (the toolkit's first-ever `runLater` pays a one-time native-library-loading cost that can exceed a single test's own timeout budget — absorbing it once in setup avoids a flaky "whichever test happens to run first" failure), and a small `await()` helper each test uses to block on an async callback with a 2-second timeout. Test against `InMemoryServerConnection`/`InMemoryAdminConnection` respectively — never the real RMI/JMS implementations.
 
 ## `docs/` — documentation
 
@@ -97,26 +100,33 @@ docs/
 ├── build-plan.md                                          Overall roadmap + current status (read this first)
 ├── project-structure.md                                   This file
 ├── specs/
-│   └── 2026-08-05-contracts-design.md                     Design doc: the contracts milestone
+│   ├── 2026-08-05-contracts-design.md                     Design doc: the contracts milestone (Milestone 1)
+│   ├── 2026-08-13-player-client-design.md                 Design doc: the JavaFX player client (Milestone 7 / step 8)
+│   └── 2026-08-13-admin-client-design.md                  Design doc: the JavaFX admin client (Milestone 8 / step 9)
 └── superpowers/
     ├── plans/
-    │   ├── 2026-08-05-contracts-implementation.md          Implementation plan: contracts
-    │   ├── 2026-08-05-rmi-server-skeleton-implementation.md   Implementation plan: RMI server skeleton
-    │   ├── 2026-08-07-jdbc-dao-layer-implementation.md     Implementation plan: JDBC/DAO layer
-    │   ├── 2026-08-08-matchmaking-queue-implementation.md  Implementation plan: matchmaking queue
-    │   ├── 2026-08-10-jms-setup-implementation.md          Implementation plan: JMS setup
-    │   └── 2026-08-11-game-engine-implementation.md        Implementation plan: game engine
+    │   ├── 2026-08-05-contracts-implementation.md          Implementation plan: contracts (Milestone 1)
+    │   ├── 2026-08-05-rmi-server-skeleton-implementation.md   Implementation plan: RMI server skeleton (Milestone 2)
+    │   ├── 2026-08-07-jdbc-dao-layer-implementation.md     Implementation plan: JDBC/DAO layer (Milestone 3)
+    │   ├── 2026-08-08-matchmaking-queue-implementation.md  Implementation plan: matchmaking queue (Milestone 4)
+    │   ├── 2026-08-10-jms-setup-implementation.md          Implementation plan: JMS setup (Milestone 5)
+    │   ├── 2026-08-11-game-engine-implementation.md        Implementation plan: game engine (Milestone 6)
+    │   ├── 2026-08-13-session-jms-topic-implementation.md  Implementation plan: per-session JMS topic (Milestone 6.5, no separate design doc)
+    │   ├── 2026-08-13-player-client-implementation.md      Implementation plan: JavaFX player client (Milestone 7 / step 8)
+    │   └── 2026-08-13-admin-client-implementation.md       Implementation plan: JavaFX admin client (Milestone 8 / step 9)
     └── specs/
-        ├── 2026-08-05-rmi-server-skeleton-design.md        Design doc: the RMI server skeleton milestone
-        ├── 2026-08-07-jdbc-dao-layer-design.md             Design doc: the JDBC/DAO layer milestone
-        ├── 2026-08-08-matchmaking-queue-design.md          Design doc: the matchmaking queue milestone
-        ├── 2026-08-09-jms-setup-design.md                  Design doc: the JMS setup milestone
-        └── 2026-08-11-game-engine-design.md                Design doc: the game engine milestone
+        ├── 2026-08-05-rmi-server-skeleton-design.md        Design doc: the RMI server skeleton milestone (Milestone 2)
+        ├── 2026-08-07-jdbc-dao-layer-design.md             Design doc: the JDBC/DAO layer milestone (Milestone 3)
+        ├── 2026-08-08-matchmaking-queue-design.md          Design doc: the matchmaking queue milestone (Milestone 4)
+        ├── 2026-08-09-jms-setup-design.md                  Design doc: the JMS setup milestone (Milestone 5)
+        └── 2026-08-11-game-engine-design.md                Design doc: the game engine milestone (Milestone 6)
 ```
 
-The generic-`GameEngine`-interface refactor that followed the game-engine milestone (splitting `server.game`/`server.game.checkers`, dropping `Move` from the shared interface) doesn't have its own design doc — it was a direct in-chat design conversation on a short-lived branch (`generic-game-engine-interface`), not a full brainstorm→plan cycle. Its rationale is captured in that branch's single commit message and summarized in `build-plan.md`'s Milestone 6 write-up.
+Two milestones don't have their own design doc, deliberately: the generic-`GameEngine`-interface refactor that followed Milestone 6 (splitting `server.game`/`server.game.checkers`, dropping `Move` from the shared interface) was a direct in-chat design conversation on a short-lived branch (`generic-game-engine-interface`), not a full brainstorm→plan cycle — its rationale is captured in that branch's single commit message and summarized in `build-plan.md`'s Milestone 6 write-up. Milestone 6.5 (the per-session JMS topic) is the same — worked through in chat, captured in full in its implementation plan's own intro rather than a separate spec file.
 
-Each completed (or in-progress) milestone has this same pair: a **design doc** (`specs/` — the *why*, decisions and rationale, written and agreed before any code) and an **implementation plan** (`superpowers/plans/` — the *how*, broken into bite-sized, TDD-ordered tasks). The `superpowers/` subfolder name comes from the workflow used to produce those docs (brainstorm → plan → subagent-driven implementation with review); it's just a naming artifact of that process, not a meaningful structural distinction from `specs/` at the top level.
+Note the split between `docs/specs/` (top-level) and `docs/superpowers/specs/`: both hold design docs for completed milestones — there's no meaningful difference between them, it's just that the top-level `specs/` location was used for Milestone 1 and then again from Milestone 7 onward, while Milestones 2–6 used `superpowers/specs/`. Check both when looking for a design doc. The `superpowers/` subfolder name comes from the workflow used to produce those docs (brainstorm → plan → subagent-driven implementation with review); it's a naming artifact of that process, not a meaningful structural distinction.
+
+Each completed milestone has this same pair (except the two noted above): a **design doc** (the *why*, decisions and rationale, written and agreed before any code) and an **implementation plan** (`superpowers/plans/` — the *how*, broken into bite-sized, TDD-ordered tasks).
 
 ## Quick orientation: "where do I add X?"
 
