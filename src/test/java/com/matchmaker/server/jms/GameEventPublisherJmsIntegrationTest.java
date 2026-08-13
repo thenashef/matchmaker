@@ -14,6 +14,7 @@ import javax.jms.MessageConsumer;
 import javax.jms.ObjectMessage;
 import javax.jms.Queue;
 import javax.jms.Session;
+import javax.jms.Topic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -59,5 +60,47 @@ class GameEventPublisherJmsIntegrationTest {
         assertEquals(GameEventType.MATCH_FOUND, receivedEvent.getType());
         assertEquals(7, receivedEvent.getSessionId());
         assertEquals(waitingPlayerUserId, receivedEvent.getGameState().getPlayer1Id());
+    }
+
+    @Test
+    void publishToSession_realConsumerReceivesTheEvent() throws Exception {
+        int sessionId = 7;
+        Topic topic = session.createTopic("session." + sessionId + ".events");
+        MessageConsumer consumer = session.createConsumer(topic);
+
+        GameStateDTO updatedSession = new GameStateDTO(sessionId, 1, 42, 99,
+                GameStatus.ACTIVE, 99, null, "{\"pieces\":{}}");
+        GameEventDTO event = new GameEventDTO(GameEventType.MOVE_MADE, sessionId, updatedSession);
+
+        publisher.publishToSession(sessionId, event);
+
+        Message received = consumer.receive(2000);
+
+        assertNotNull(received, "expected a message to arrive on the session's topic");
+        assertInstanceOf(ObjectMessage.class, received);
+        GameEventDTO receivedEvent = (GameEventDTO) ((ObjectMessage) received).getObject();
+        assertEquals(GameEventType.MOVE_MADE, receivedEvent.getType());
+        assertEquals(sessionId, receivedEvent.getSessionId());
+    }
+
+    @Test
+    void publishToSession_bothSubscribersReceiveTheirOwnCopy() throws Exception {
+        int sessionId = 7;
+        Topic topic = session.createTopic("session." + sessionId + ".events");
+        MessageConsumer player1Consumer = session.createConsumer(topic);
+        MessageConsumer player2Consumer = session.createConsumer(topic);
+
+        GameStateDTO updatedSession = new GameStateDTO(sessionId, 1, 42, 99,
+                GameStatus.ACTIVE, 99, null, "{\"pieces\":{}}");
+        GameEventDTO event = new GameEventDTO(GameEventType.MOVE_MADE, sessionId, updatedSession);
+
+        publisher.publishToSession(sessionId, event);
+
+        Message receivedByPlayer1 = player1Consumer.receive(2000);
+        Message receivedByPlayer2 = player2Consumer.receive(2000);
+
+        assertNotNull(receivedByPlayer1, "expected player 1's subscription to receive the event");
+        assertNotNull(receivedByPlayer2, "expected player 2's subscription to receive the event -- "
+                + "a JMS Queue would only have delivered this to one of the two consumers");
     }
 }

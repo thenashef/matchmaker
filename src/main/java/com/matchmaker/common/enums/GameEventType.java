@@ -1,5 +1,6 @@
 package com.matchmaker.common.enums;
 
 public enum GameEventType {
-    MATCH_FOUND
+    MATCH_FOUND,
+    MOVE_MADE
 }

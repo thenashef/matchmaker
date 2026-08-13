@@ -8,4 +8,9 @@ public class FailingGameEventPublisher implements GameEventPublisher {
     public void publishToPlayer(int userId, GameEventDTO event) {
         throw new JmsPublishException("simulated JMS failure", new RuntimeException("broker unreachable"));
     }
+
+    @Override
+    public void publishToSession(int sessionId, GameEventDTO event) {
+        throw new JmsPublishException("simulated JMS failure", new RuntimeException("broker unreachable"));
+    }
 }

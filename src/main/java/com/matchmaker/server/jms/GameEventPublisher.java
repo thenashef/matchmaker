@@ -5,4 +5,6 @@ import com.matchmaker.common.dto.GameEventDTO;
 public interface GameEventPublisher {
 
     void publishToPlayer(int userId, GameEventDTO event);
+
+    void publishToSession(int sessionId, GameEventDTO event);
 }
