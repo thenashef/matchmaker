@@ -46,4 +46,30 @@ public class InMemoryGameSessionDao implements GameSessionDao {
         sessions.add(updatedSession);
         return updatedSession;
     }
+
+    @Override
+    public List<GameStateDTO> findAllActive() {
+        List<GameStateDTO> result = new ArrayList<>();
+        for (GameStateDTO session : sessions) {
+            if (session.getStatus() == GameStatus.ACTIVE) {
+                result.add(session);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Optional<GameStateDTO> forceEnd(int sessionId) {
+        for (GameStateDTO session : sessions) {
+            if (session.getSessionId() == sessionId && session.getStatus() == GameStatus.ACTIVE) {
+                GameStateDTO ended = new GameStateDTO(session.getSessionId(), session.getGameTypeId(),
+                        session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.ABANDONED, null, null,
+                        session.getBoardState());
+                sessions.removeIf(s -> s.getSessionId() == sessionId);
+                sessions.add(ended);
+                return Optional.of(ended);
+            }
+        }
+        return Optional.empty();
+    }
 }

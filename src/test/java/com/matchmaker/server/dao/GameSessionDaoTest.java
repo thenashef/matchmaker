@@ -133,6 +133,37 @@ class GameSessionDaoTest {
         assertEquals(1, lossesOf(player2Id));
     }
 
+    @Test
+    void findAllActive_returnsOnlyActiveSessions() throws Exception {
+        int activeSessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        List<GameStateDTO> active = gameSessionDao.findAllActive();
+
+        assertEquals(1, active.size());
+        assertEquals(activeSessionId, active.get(0).getSessionId());
+        assertEquals(GameStatus.ACTIVE, active.get(0).getStatus());
+    }
+
+    @Test
+    void forceEnd_activeSession_setsAbandonedNoWinner() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+
+        Optional<GameStateDTO> result = gameSessionDao.forceEnd(sessionId);
+
+        assertTrue(result.isPresent());
+        assertEquals(GameStatus.ABANDONED, result.get().getStatus());
+        assertEquals(null, result.get().getWinnerId());
+        assertTrue(gameSessionDao.findActiveById(sessionId).isEmpty());
+    }
+
+    @Test
+    void forceEnd_alreadyFinishedSession_returnsEmpty() throws Exception {
+        int sessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        assertTrue(gameSessionDao.forceEnd(sessionId).isEmpty());
+    }
+
     private int insertActiveSession(int player1Id, int player2Id, int gameTypeId) throws Exception {
         String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID) "
                 + "VALUES (?, ?, ?, 'ACTIVE', ?)";

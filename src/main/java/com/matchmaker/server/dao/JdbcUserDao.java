@@ -6,6 +6,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public class JdbcUserDao implements UserDao {
@@ -49,19 +51,58 @@ public class JdbcUserDao implements UserDao {
                 if (!rs.next()) {
                     return Optional.empty();
                 }
-                return Optional.of(new UserRecord(
-                        rs.getInt("ID"),
-                        rs.getString("Username"),
-                        rs.getString("Password"),
-                        rs.getBoolean("IsAdmin"),
-                        rs.getInt("Wins"),
-                        rs.getInt("Losses"),
-                        rs.getInt("Draws"),
-                        rs.getInt("Rating"),
-                        rs.getTimestamp("CreatedAt").toLocalDateTime()));
+                return Optional.of(mapRow(rs));
             }
         } catch (SQLException e) {
             throw new DaoException("Failed to find user '" + username + "'", e);
         }
+    }
+
+    @Override
+    public Optional<UserRecord> findById(int id) {
+        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+                + "FROM User WHERE ID = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to find user " + id, e);
+        }
+    }
+
+    @Override
+    public List<UserRecord> findAll() {
+        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+                + "FROM User ORDER BY ID";
+        List<UserRecord> result = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(mapRow(rs));
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new DaoException("Failed to list users", e);
+        }
+    }
+
+    private static UserRecord mapRow(ResultSet rs) throws SQLException {
+        return new UserRecord(
+                rs.getInt("ID"),
+                rs.getString("Username"),
+                rs.getString("Password"),
+                rs.getBoolean("IsAdmin"),
+                rs.getInt("Wins"),
+                rs.getInt("Losses"),
+                rs.getInt("Draws"),
+                rs.getInt("Rating"),
+                rs.getTimestamp("CreatedAt").toLocalDateTime());
     }
 }

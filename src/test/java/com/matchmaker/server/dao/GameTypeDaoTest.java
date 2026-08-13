@@ -41,6 +41,15 @@ class GameTypeDaoTest {
         assertEquals("Chess", result.get(1).getName());
     }
 
+    @Test
+    void insert_returnsTheCreatedGameTypeWithARealId() {
+        GameTypeDTO created = gameTypeDao.insert(new GameTypeDTO(0, "Battleship", "Naval combat", 2, 2, 10, 10));
+
+        assertTrue(created.getId() > 0);
+        assertEquals("Battleship", created.getName());
+        assertEquals(1, gameTypeDao.findAll().size());
+    }
+
     private void insertGameType(String name, String description, int minPlayers, int maxPlayers,
                                  int rows, int cols) throws Exception {
         String sql = "INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols) "

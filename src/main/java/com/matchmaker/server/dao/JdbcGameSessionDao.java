@@ -72,6 +72,56 @@ public class JdbcGameSessionDao implements GameSessionDao {
     }
 
     @Override
+    public List<GameStateDTO> findAllActive() {
+        String sql = "SELECT ID, GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, WinnerID, BoardState "
+                + "FROM GameSession WHERE Status = 'ACTIVE' ORDER BY StartTime";
+        List<GameStateDTO> result = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(mapRow(rs));
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new DaoException("Failed to list active sessions", e);
+        }
+    }
+
+    @Override
+    public Optional<GameStateDTO> forceEnd(int sessionId) {
+        // Mirrors recordMove()'s guarded-UPDATE pattern: WHERE ... AND Status = 'ACTIVE' means a
+        // session that already ended naturally (a player won) in the gap before this call commits
+        // just yields 0 rows updated -- treated as "nothing to force-end," not an error.
+        String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = NULL, EndTime = NOW() "
+                + "WHERE ID = ? AND Status = 'ACTIVE'";
+        try (Connection conn = dataSource.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, sessionId);
+            int rowsUpdated = stmt.executeUpdate();
+            if (rowsUpdated == 0) {
+                return Optional.empty();
+            }
+            return findAnyById(conn, sessionId);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to force-end session " + sessionId, e);
+        }
+    }
+
+    private Optional<GameStateDTO> findAnyById(Connection conn, int sessionId) throws SQLException {
+        String sql = "SELECT ID, GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, WinnerID, BoardState "
+                + "FROM GameSession WHERE ID = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, sessionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(mapRow(rs));
+            }
+        }
+    }
+
+    @Override
     public GameStateDTO recordMove(GameStateDTO updatedSession, int movingUserId, String movePayloadJson) {
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);

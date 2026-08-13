@@ -10,5 +10,9 @@ public interface GameSessionDao {
 
     Optional<GameStateDTO> findActiveById(int sessionId);
 
+    List<GameStateDTO> findAllActive();
+
     GameStateDTO recordMove(GameStateDTO updatedSession, int movingUserId, String movePayloadJson);
+
+    Optional<GameStateDTO> forceEnd(int sessionId);
 }

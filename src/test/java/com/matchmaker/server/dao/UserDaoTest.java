@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -61,5 +62,30 @@ class UserDaoTest {
         Optional<UserRecord> result = userDao.findByUsername("nobody");
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void findById_existingUser_returnsRecord() {
+        Optional<UserRecord> inserted = userDao.insert("carol", "hash");
+
+        Optional<UserRecord> found = userDao.findById(inserted.get().id());
+
+        assertTrue(found.isPresent());
+        assertEquals("carol", found.get().username());
+    }
+
+    @Test
+    void findById_unknownId_returnsEmpty() {
+        assertTrue(userDao.findById(999999).isEmpty());
+    }
+
+    @Test
+    void findAll_returnsEveryUser() {
+        userDao.insert("carol", "hash");
+        userDao.insert("dave", "hash");
+
+        List<UserRecord> all = userDao.findAll();
+
+        assertEquals(2, all.size());
     }
 }

@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface GameTypeDao {
     List<GameTypeDTO> findAll();
+    GameTypeDTO insert(GameTypeDTO newGameType);
 }

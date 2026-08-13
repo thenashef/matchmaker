@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,6 +40,31 @@ public class JdbcGameTypeDao implements GameTypeDao {
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to list game types", e);
+        }
+    }
+
+    @Override
+    public GameTypeDTO insert(GameTypeDTO newGameType) {
+        String sql = "INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols) "
+                + "VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setString(1, newGameType.getName());
+            stmt.setString(2, newGameType.getDescription());
+            stmt.setInt(3, newGameType.getMinPlayers());
+            stmt.setInt(4, newGameType.getMaxPlayers());
+            stmt.setInt(5, newGameType.getBoardRows());
+            stmt.setInt(6, newGameType.getBoardCols());
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                int newId = keys.getInt(1);
+                return new GameTypeDTO(newId, newGameType.getName(), newGameType.getDescription(),
+                        newGameType.getMinPlayers(), newGameType.getMaxPlayers(),
+                        newGameType.getBoardRows(), newGameType.getBoardCols());
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to insert game type '" + newGameType.getName() + "'", e);
         }
     }
 }
