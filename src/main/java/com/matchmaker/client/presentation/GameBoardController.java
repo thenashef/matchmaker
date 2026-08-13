@@ -163,7 +163,8 @@ public class GameBoardController {
     @FXML
     private void onBackToLobby() {
         gameClientService.leaveGame();
-        LobbyController controller = navigator.show("LobbyView.fxml", "MatchMaker - Lobby");
+        LobbyController controller = navigator.show("LobbyView.fxml",
+                "MatchMaker - Lobby (" + gameClientService.getCurrentUser().getUsername() + ")");
         controller.init(gameClientService, navigator);
     }
 

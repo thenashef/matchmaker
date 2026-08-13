@@ -44,13 +44,16 @@ public class LobbyController {
             return;
         }
         joinButton.setDisable(true);
+        String username = gameClientService.getCurrentUser().getUsername();
         gameClientService.joinQueue(selected.getId(),
                 matchedState -> {
-                    GameBoardController controller = navigator.show("GameBoardView.fxml", "MatchMaker - Game");
+                    GameBoardController controller = navigator.show("GameBoardView.fxml",
+                            "MatchMaker - Game (" + username + ")");
                     controller.init(gameClientService, navigator, matchedState);
                 },
                 () -> {
-                    MatchmakingWaitController controller = navigator.show("MatchmakingWaitView.fxml", "MatchMaker - Waiting");
+                    MatchmakingWaitController controller = navigator.show("MatchmakingWaitView.fxml",
+                            "MatchMaker - Waiting (" + username + ")");
                     controller.init(gameClientService, navigator);
                 },
                 error -> {

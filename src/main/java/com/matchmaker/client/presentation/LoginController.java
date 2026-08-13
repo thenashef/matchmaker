@@ -29,7 +29,8 @@ public class LoginController {
         setControlsDisabled(true);
         gameClientService.login(usernameField.getText(), passwordField.getText(),
                 user -> {
-                    LobbyController controller = navigator.show("LobbyView.fxml", "MatchMaker - Lobby");
+                    LobbyController controller = navigator.show("LobbyView.fxml",
+                            "MatchMaker - Lobby (" + user.getUsername() + ")");
                     controller.init(gameClientService, navigator);
                 },
                 error -> {

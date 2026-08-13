@@ -24,7 +24,8 @@ public class MatchmakingWaitController {
         cancelButton.setDisable(true);
         gameClientService.cancelQueue(
                 () -> {
-                    LobbyController controller = navigator.show("LobbyView.fxml", "MatchMaker - Lobby");
+                    LobbyController controller = navigator.show("LobbyView.fxml",
+                            "MatchMaker - Lobby (" + gameClientService.getCurrentUser().getUsername() + ")");
                     controller.init(gameClientService, navigator);
                 },
                 error -> {
