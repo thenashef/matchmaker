@@ -14,7 +14,7 @@
         </Label>
     </top>
     <center>
-        <!-- 480x480 = BOARD_SIZE (8) * the 60px cell size GameBoardController builds cells at --
+        <!-- 480x480 = BOARD_SIZE (8) times the 60px cell size GameBoardController builds cells at:
              set explicitly so the window sizes correctly even before any cell is populated
              (cells are added programmatically after this screen is already shown). -->
         <GridPane fx:id="boardGrid" alignment="CENTER" prefWidth="480.0" prefHeight="480.0">
