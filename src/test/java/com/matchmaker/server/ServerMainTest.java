@@ -17,12 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 class ServerMainTest {
 
     private static final int TEST_PORT = 21100;
+    private static final int TEST_JMS_PORT = 21106;
 
     private ServerMain.Started started;
 
     @BeforeEach
     void startServer() throws Exception {
-        started = ServerMain.startWithImpls(TEST_PORT);
+        started = ServerMain.startWithImpls(TEST_PORT, TEST_JMS_PORT);
     }
 
     @AfterEach
@@ -45,6 +46,9 @@ class ServerMainTest {
         }
         if (registry != null) {
             try { UnicastRemoteObject.unexportObject(registry, true); } catch (Exception ignored) { }
+        }
+        if (started != null && started.jmsBroker() != null) {
+            try { started.jmsBroker().stop(); } catch (Exception ignored) { }
         }
     }
 

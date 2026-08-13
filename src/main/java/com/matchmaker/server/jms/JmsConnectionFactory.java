@@ -10,8 +10,10 @@ import java.util.UUID;
 public class JmsConnectionFactory {
 
     public static Connection create() throws JMSException {
-        String brokerUrl = "vm://matchmaker-" + UUID.randomUUID() + "?broker.persistent=false";
+        return createForBroker("vm://matchmaker-" + UUID.randomUUID() + "?broker.persistent=false");
+    }
 
+    public static Connection createForBroker(String brokerUrl) throws JMSException {
         ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
         factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
 

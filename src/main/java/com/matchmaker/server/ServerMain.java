@@ -10,6 +10,7 @@ import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.game.GameEngine;
 import com.matchmaker.server.game.checkers.CheckersEngine;
 import com.matchmaker.server.jms.ActiveMqGameEventPublisher;
+import com.matchmaker.server.jms.EmbeddedJmsBroker;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsConnectionFactory;
 import com.matchmaker.server.matchmaking.JdbcMatchmakingQueue;
@@ -17,6 +18,7 @@ import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import com.matchmaker.server.rmi.AdminServiceImpl;
 import com.matchmaker.server.rmi.AuthServiceImpl;
 import com.matchmaker.server.rmi.PlayerServiceImpl;
+import org.apache.activemq.broker.BrokerService;
 
 import javax.jms.Connection;
 import javax.jms.JMSException;
@@ -28,13 +30,15 @@ import java.rmi.registry.Registry;
 
 public class ServerMain {
 
-    public static final int PORT = 1099;
+    public static final int RMI_PORT = 1099;
+    public static final int JMS_PORT = 61616;
 
     public static void main(String[] args) throws Exception {
-        start(PORT);
+        start(RMI_PORT, JMS_PORT);
 
-        System.out.println("MatchMaker RMI registry started on port " + PORT);
+        System.out.println("MatchMaker RMI registry started on port " + RMI_PORT);
         System.out.println("Bound services: AuthService, PlayerService, AdminService");
+        System.out.println("JMS broker listening on tcp://localhost:" + JMS_PORT);
 
         // RMI's exported objects are served by daemon-ish background threads that don't, on their
         // own, keep the launching JVM alive -- under `mvn exec:java` Maven exits as soon as main()
@@ -43,17 +47,17 @@ public class ServerMain {
         Thread.currentThread().join();
     }
 
-    public static Registry start(int port) throws RemoteException, JMSException {
-        return startWithImpls(port).registry();
+    public static Registry start(int rmiPort, int jmsPort) throws Exception {
+        return startWithImpls(rmiPort, jmsPort).registry();
     }
 
     /**
-     * Package-private variant of {@link #start(int)} that also hands back the constructed
+     * Package-private variant of {@link #start(int, int)} that also hands back the constructed
      * service impls (not just the registry), so tests can unexport each one individually in
      * teardown -- {@code registry.lookup(...)} only ever returns a client-side stub, which
      * can't be passed to {@code UnicastRemoteObject.unexportObject}.
      */
-    static Started startWithImpls(int port) throws RemoteException, JMSException {
+    static Started startWithImpls(int rmiPort, int jmsPort) throws Exception {
         SessionManager sessionManager = new SessionManager();
 
         DataSource dataSource = DataSourceFactory.create();
@@ -62,12 +66,13 @@ public class ServerMain {
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
         MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
 
-        Connection jmsConnection = JmsConnectionFactory.create();
+        BrokerService jmsBroker = EmbeddedJmsBroker.start(jmsPort);
+        Connection jmsConnection = JmsConnectionFactory.createForBroker("tcp://localhost:" + jmsPort);
         Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
         GameEngine gameEngine = new CheckersEngine();
 
-        Registry registry = LocateRegistry.createRegistry(port);
+        Registry registry = LocateRegistry.createRegistry(rmiPort);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
                 matchmakingQueue, gameEventPublisher, gameEngine);
@@ -77,10 +82,10 @@ public class ServerMain {
         registry.rebind("PlayerService", playerService);
         registry.rebind("AdminService", adminService);
 
-        return new Started(registry, authService, playerService, adminService);
+        return new Started(jmsBroker, registry, authService, playerService, adminService);
     }
 
-    record Started(Registry registry, AuthServiceImpl authService, PlayerServiceImpl playerService,
-                    AdminServiceImpl adminService) {
+    record Started(BrokerService jmsBroker, Registry registry, AuthServiceImpl authService,
+                    PlayerServiceImpl playerService, AdminServiceImpl adminService) {
     }
 }
