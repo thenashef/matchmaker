@@ -103,6 +103,31 @@ class PlayerServiceImplTest {
     }
 
     @Test
+    void joinQueue_opponentWaiting_returnedStateHasARealBoardNotNull() throws Exception {
+        // InMemoryMatchmakingQueue.join() mirrors JdbcMatchmakingQueue.join() in never setting
+        // BoardState -- joinQueue() must fall back to gameEngine.initialState() itself, the same
+        // way makeMove() already does, since the client needs a real board to render the instant
+        // it's matched, before any move has happened.
+        String otherToken = sessionManager.createSession(2);
+        playerService.joinQueue(otherToken, 1);
+
+        GameStateDTO result = playerService.joinQueue(sessionToken, 1);
+
+        assertEquals(new CheckersEngine().initialState(), result.getBoardState());
+    }
+
+    @Test
+    void joinQueue_opponentWaiting_publishedMatchFoundEventHasARealBoardNotNull() throws Exception {
+        String otherToken = sessionManager.createSession(2);
+        playerService.joinQueue(otherToken, 1); // user 2 waits first
+
+        playerService.joinQueue(sessionToken, 1); // user 1 matches them
+
+        InMemoryGameEventPublisher.PublishedEvent published = gameEventPublisher.published().get(0);
+        assertEquals(new CheckersEngine().initialState(), published.event().getGameState().getBoardState());
+    }
+
+    @Test
     void joinQueue_opponentWaiting_publishesMatchFoundEventToWaitingPlayer() throws Exception {
         String otherToken = sessionManager.createSession(2);
         playerService.joinQueue(otherToken, 1); // user 2 waits first

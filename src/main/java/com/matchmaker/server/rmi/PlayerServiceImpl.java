@@ -57,6 +57,17 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         GameStateDTO result = matchmakingQueue.join(userId, gameTypeId);
 
         if (result != null) {
+            // JdbcMatchmakingQueue.join() never sets BoardState when creating a match --
+            // makeMove() already falls back to gameEngine.initialState() when it later reads a
+            // null board, but the client needs a real board to render the instant it's matched,
+            // before any move has happened. Apply the same fallback here so neither the
+            // immediate return value nor the MATCH_FOUND push ever carries a null board.
+            if (result.getBoardState() == null) {
+                result = new GameStateDTO(result.getSessionId(), result.getGameTypeId(), result.getPlayer1Id(),
+                        result.getPlayer2Id(), result.getStatus(), result.getCurrentTurnUserId(),
+                        result.getWinnerId(), gameEngine.initialState());
+            }
+
             Integer opponentUserId;
             if (result.getPlayer1Id() == userId) {
                 opponentUserId = result.getPlayer2Id();
