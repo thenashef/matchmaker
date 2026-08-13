@@ -146,7 +146,7 @@ public class GameClientService {
     }
 
     private void onSessionTopicEvent(GameEventDTO event) {
-        if (event.getType() != GameEventType.MOVE_MADE) {
+        if (event.getType() != GameEventType.MOVE_MADE && event.getType() != GameEventType.SESSION_FORCE_ENDED) {
             return;
         }
         Platform.runLater(() -> {
