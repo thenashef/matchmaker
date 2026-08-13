@@ -15,7 +15,11 @@ class DataSourceFactoryTest {
         DataSource dataSource = DataSourceFactory.create();
 
         HikariDataSource hikari = assertInstanceOf(HikariDataSource.class, dataSource);
-        assertEquals("jdbc:mysql://localhost:3306/matchmaker", hikari.getJdbcUrl());
+        // src/test/resources/db.properties shadows the main one under `mvn test` -- this
+        // asserts DataSourceFactory picks up whatever's actually on the classpath, which is
+        // deliberately matchmaker_test here, not the real dev database (see db/schema.sql's
+        // note on why the two are kept separate).
+        assertEquals("jdbc:mysql://localhost:3306/matchmaker_test", hikari.getJdbcUrl());
         assertEquals("matchmaker", hikari.getUsername());
 
         hikari.close();
