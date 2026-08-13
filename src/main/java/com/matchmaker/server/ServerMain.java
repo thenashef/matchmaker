@@ -76,7 +76,8 @@ public class ServerMain {
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
                 matchmakingQueue, gameEventPublisher, gameEngine);
-        AdminServiceImpl adminService = new AdminServiceImpl(sessionManager);
+        AdminServiceImpl adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao,
+                gameSessionDao, gameEventPublisher);
 
         registry.rebind("AuthService", authService);
         registry.rebind("PlayerService", playerService);
