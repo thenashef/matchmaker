@@ -19,7 +19,7 @@ class DataSourceFactoryTest {
         // asserts DataSourceFactory picks up whatever's actually on the classpath, which is
         // deliberately matchmaker_test here, not the real dev database (see db/schema.sql's
         // note on why the two are kept separate).
-        assertEquals("jdbc:mysql://localhost:3306/matchmaker_test", hikari.getJdbcUrl());
+        assertEquals("jdbc:mysql://localhost:3306/matchmaker_test?connectionTimeZone=SERVER", hikari.getJdbcUrl());
         assertEquals("matchmaker", hikari.getUsername());
 
         hikari.close();
