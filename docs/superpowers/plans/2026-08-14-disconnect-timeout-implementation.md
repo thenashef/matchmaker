@@ -6,30 +6,10 @@
 
 ## Global constraints
 
-- `GameStateDTO` gaining a `turnStartedAt` field is a breaking constructor change — every construction site across `main` and `test` must be updated in the same task (Task 1), or the build won't compile at all in between. Do this first, before anything else depends on the DTO shape.
-- `GameSessionDao.abandon(int, Integer)` and `SessionWatchdog` are new, additive surface — safe to build incrementally after Task 1 lands.
+- **Deviation from the design doc, decided during implementation grounding**: rather than widening `GameStateDTO` with a `turnStartedAt` field (which would force updating ~13 construction sites across the codebase, most of them test fixtures for unrelated features — `AdminServiceImplTest`, `GameClientServiceTest`, `JdbcMatchmakingQueue`, `EmbeddedJmsBrokerTest`, etc.), `SessionWatchdog` gets turn-start time via a small dedicated `GameSessionDao.currentTurnStartedAt(int sessionId)` lookup instead. Same functional outcome, contained to 3 files. Design doc updated to match.
+- `GameSessionDao.abandon(int, Integer)`, `currentTurnStartedAt(int)`, and `SessionWatchdog` are all new, additive surface — no breaking changes to existing DTOs or method signatures anywhere in this plan.
 - Every step that touches `mvn test`'s DB-integration tier needs `docker compose up -d` running first; everything else stays Docker-free per the existing test-tier split.
 - Match existing style exactly: no comments except where a hidden constraint/invariant needs explaining (this codebase's own convention, visible in every file touched below).
-
----
-
-### Task 1: `GameStateDTO.turnStartedAt`
-
-**Files:**
-- Modify: `src/main/java/com/matchmaker/common/dto/GameStateDTO.java`
-- Modify: `src/main/java/com/matchmaker/server/dao/JdbcGameSessionDao.java` (every `ResultSet`-mapping method: `findFinishedSessionsForUser`, `findActiveById`, `findAllActive`, `recordMove`, `forceEnd`'s `findAnyById`)
-- Modify: `src/main/java/com/matchmaker/server/rmi/PlayerServiceImpl.java` (`joinQueue()`, `makeMove()` — both branches)
-- Modify: `src/test/java/com/matchmaker/server/dao/InMemoryGameSessionDao.java`
-- Modify: `src/test/java/com/matchmaker/common/dto/ExistingDtoSerializationTest.java` (or wherever `GameStateDTO` round-trip is covered — extend for the new field)
-- Modify: `src/test/java/com/matchmaker/server/rmi/PlayerServiceImplTest.java` (any inline `new GameStateDTO(...)` fixtures)
-
-**Steps:**
-1. Add `private final Instant turnStartedAt;` + constructor arg (append at the end, after `boardState`, to minimize positional-arg churn risk) + `getTurnStartedAt()` to `GameStateDTO`.
-2. Fix every compile error this produces — `JdbcGameSessionDao` reads `rs.getTimestamp("TurnStartedAt").toInstant()` in each mapping method (all five queries already `SELECT`... confirm `TurnStartedAt` is in each `SELECT` list; add it where missing). `PlayerServiceImpl.joinQueue()`/`makeMove()` thread the existing session's `turnStartedAt` through unchanged on the `CONTINUE` branch; on `makeMove()`'s successful-move branches, use `Instant.now()` for a fresh turn (only `recordMove()`'s own `TurnStartedAt = NOW()` in the SQL is authoritative — the DTO built in `makeMove()` before calling `recordMove()` should still pass something reasonable through, but `recordMove()`'s returned/re-read row is what actually matters downstream).
-3. `InMemoryGameSessionDao`: give its fake rows a `turnStartedAt`, defaulting to `Instant.now()` at insertion, updated on `recordMove()`'s fake.
-4. Run `mvn test-compile` to confirm everything compiles before running tests.
-5. Run `mvn test` (no Docker needed for this task's own new coverage, but the full suite touches DAO tests — run `docker compose up -d && mvn test` for a full green baseline).
-6. Commit: `git commit -m "Add turnStartedAt to GameStateDTO"`.
 
 ---
 
@@ -47,7 +27,7 @@
 
 ---
 
-### Task 3: `GameSessionDao.abandon()`
+### Task 3: `GameSessionDao.abandon()` + `currentTurnStartedAt()`
 
 **Files:**
 - Modify: `src/main/java/com/matchmaker/server/dao/GameSessionDao.java`
@@ -56,12 +36,12 @@
 - Modify: `src/test/java/com/matchmaker/server/dao/GameSessionDaoTest.java` (Docker)
 
 **Steps:**
-1. `GameSessionDao`: `Optional<GameStateDTO> abandon(int sessionId, Integer winnerUserId);`
-2. `JdbcGameSessionDao.abandon()`: same guarded-`UPDATE` shape as `forceEnd()` (`WHERE ID = ? AND Status = 'ACTIVE'`) but `SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW()`. If `winnerUserId != null`, inside the same transaction call the existing private `applyEloAndRecordResult(conn, winnerUserId, loserUserId)` — `loserUserId` is whichever of `Player1ID`/`Player2ID` isn't the winner, read from the row before/via the update. If `winnerUserId == null`, skip the ELO call entirely (mirrors `forceEnd()`).
-3. `InMemoryGameSessionDao.abandon()`: same no-op-if-already-finished semantics as its existing `forceEnd()` fake, plus recording the winner (or lack of one) on the fake row for assertions.
-4. `GameSessionDaoTest`: extend with — winner case (status/winner/ELO all update, mirroring the existing `recordMove()` ELO-transaction test), no-winner case (status updates, `WinnerID` stays null, `Wins`/`Losses`/`Rating` untouched for both players), already-finished no-op case.
+1. `GameSessionDao`: `Optional<GameStateDTO> abandon(int sessionId, Integer winnerUserId);` and `Optional<Instant> currentTurnStartedAt(int sessionId);`.
+2. `JdbcGameSessionDao.abandon()`: same guarded-`UPDATE` shape as `forceEnd()` (`WHERE ID = ? AND Status = 'ACTIVE'`) but `SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW()`. If `winnerUserId != null`, inside the same transaction call the existing private `applyEloAndRecordResult(conn, winnerUserId, loserUserId)` — `loserUserId` is whichever of `Player1ID`/`Player2ID` isn't the winner, read from the row before/via the update. If `winnerUserId == null`, skip the ELO call entirely (mirrors `forceEnd()`). `JdbcGameSessionDao.currentTurnStartedAt()`: `SELECT TurnStartedAt FROM GameSession WHERE ID = ? AND Status = 'ACTIVE'`, mapped via `rs.getTimestamp(...).toInstant()`.
+3. `InMemoryGameSessionDao.abandon()`: same no-op-if-already-finished semantics as its existing `forceEnd()` fake, plus recording the winner (or lack of one) on the fake row for assertions. `currentTurnStartedAt()`: backed by a new `Map<Integer, Instant>` the fake maintains itself (seeded to `Instant.now()` in `addActiveSession()`, refreshed in `recordMove()`), since `GameStateDTO` carries no such field.
+4. `GameSessionDaoTest`: extend with — winner case (status/winner/ELO all update, mirroring the existing `recordMove()` ELO-transaction test), no-winner case (status updates, `WinnerID` stays null, `Wins`/`Losses`/`Rating` untouched for both players), already-finished no-op case, plus a `currentTurnStartedAt()` happy-path case.
 5. Run `docker compose up -d && mvn test -Dtest=GameSessionDaoTest`, confirm green.
-6. Commit: `git commit -m "Add GameSessionDao.abandon() for disconnect/timeout auto-forfeit"`.
+6. Commit: `git commit -m "Add GameSessionDao.abandon() and currentTurnStartedAt() for disconnect/timeout"`.
 
 ---
 
@@ -96,7 +76,7 @@
    - Look up both participants' `sessionManager.lastSeen(...)`.
    - Exactly one missing/older than `disconnectTimeout` → `abandon(sessionId, otherParticipant)`.
    - Both missing/older than `disconnectTimeout` → `abandon(sessionId, null)`.
-   - Else, `Duration.between(session.getTurnStartedAt(), Instant.now())` older than `turnTimeout` → `abandon(sessionId, theNonCurrentTurnParticipant)`.
+   - Else, `Duration.between(gameSessionDao.currentTurnStartedAt(sessionId), Instant.now())` older than `turnTimeout` → `abandon(sessionId, theNonCurrentTurnParticipant)`.
    - On any of the three, call `gameSessionDao.abandon(...)`; if it returns a present `Optional` (i.e. actually did something), publish `SESSION_ABANDONED` via `gameEventPublisher.publishToSession(...)`, catching/logging `JmsPublishException` same as every other publish call in this codebase.
 3. Write `SessionWatchdogTest` first (TDD): against `InMemoryGameSessionDao`/`InMemoryGameEventPublisher`/a real `SessionManager` seeded via `createSession()` + manually backdating `lastSeenByUserId` (may need a small test-only seam — e.g. a package-private setter, or drive it purely through `Duration`s short enough that `Thread.sleep` in the test is acceptable). Cases: single-participant silence → abandon + correct winner + event published; both silent → abandon + null winner + event published; expired turn → abandon + non-current-turn participant wins; healthy session → untouched, nothing published.
 4. Implement `SessionWatchdog` to make the tests pass.

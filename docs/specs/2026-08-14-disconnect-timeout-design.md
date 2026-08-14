@@ -29,11 +29,11 @@ Step 10 splits into four pieces of very different size, plus a fifth (real JMS b
 3. **New `SessionWatchdog`** (`server` package, alongside `SessionManager`/`ServerMain`) — owns one single-thread `ScheduledExecutorService`, ticking every **5s** (short relative to the 60s thresholds, so detection latency stays low; cheap, since it's just iterating active sessions). Constructor takes `SessionManager`, `GameSessionDao`, `GameEventPublisher`. Each tick, for every session `gameSessionDao.findAllActive()` returns:
    - If **exactly one** participant's `lastSeen` is missing or older than 60s → abandon, the *other* participant wins.
    - Else if **both** participants are silent past 60s (decided in chat: a double-disconnect isn't a competitive result — this is also what the three already-orphaned dev-DB sessions are, since neither player in them is actually still connected) → abandon with **no winner** (`WinnerID = NULL`, no ELO/`Wins`/`Losses` update), the same no-fault shape as admin's `forceEnd()`. `GameSessionDao` needs a second method for this, or `abandon()` takes a nullable `Integer winnerUserId` and only runs `applyEloAndRecordResult` when it's non-null.
-   - Else if `Duration.between(session.getTurnStartedAt(), Instant.now())` exceeds 60s → abandon, the participant who is **not** `currentTurnUserId` wins.
+   - Else if `Duration.between(gameSessionDao.currentTurnStartedAt(sessionId), Instant.now())` exceeds 60s → abandon, the participant who is **not** `currentTurnUserId` wins.
    
    `start()`/`stop()` methods around the executor; constructed and started in `ServerMain.startWithImpls()`, added to the `Started` record so `ServerMainTest` can shut it down in teardown, the same way the JMS broker and registry already are.
 
-4. **`GameStateDTO` gains a `turnStartedAt` field** (`Instant`, `Serializable`) — real session state a DTO called "the live snapshot of a game session" was always missing. Every construction site needs the new constructor arg: `JdbcGameSessionDao`'s several `ResultSet`-mapping methods (`findFinishedSessionsForUser`, `findActiveById`, `findAllActive`, `recordMove`, `forceEnd`'s internal `findAnyById`), `PlayerServiceImpl.joinQueue()`/`makeMove()`, and the test fake `InMemoryGameSessionDao`. Read from JDBC via `rs.getTimestamp("TurnStartedAt").toInstant()`.
+4. **New `GameSessionDao.currentTurnStartedAt(int sessionId)`** returning `Optional<Instant>`, rather than widening `GameStateDTO` itself. `GameStateDTO` is constructed in ~13 places across the codebase, most of them test fixtures for entirely unrelated features (`AdminServiceImplTest`, `GameClientServiceTest`, `JdbcMatchmakingQueue`, `EmbeddedJmsBrokerTest`, etc.) — only `SessionWatchdog` actually needs `TurnStartedAt`, so a small dedicated lookup (one query per active session per sweep tick — trivially cheap at this scale) keeps the change contained to `GameSessionDao`/`JdbcGameSessionDao`/`InMemoryGameSessionDao` instead of rippling through every DTO construction site in the codebase. `JdbcGameSessionDao`: `SELECT TurnStartedAt FROM GameSession WHERE ID = ? AND Status = 'ACTIVE'`. `InMemoryGameSessionDao`: a parallel `Map<Integer, Instant>` the fake maintains itself (seeded on `addActiveSession()`, refreshed on `recordMove()`), since `GameStateDTO` itself carries no such field.
 
 5. **New `GameSessionDao.abandon(int sessionId, Integer winnerUserId)`**, mirroring `forceEnd()`'s guarded update (`WHERE ID = ? AND Status = 'ACTIVE'` — a session that already ended naturally in the gap before this commits just becomes a no-op, `Optional.empty()`, not an error). When `winnerUserId` is non-null, sets a real `WinnerID` and, in the same transaction, calls the existing `applyEloAndRecordResult(conn, winnerUserId, loserUserId)` — so a single-player disconnect/timeout updates rating exactly like a normal win. When `winnerUserId` is null (the double-disconnect case), behaves exactly like admin's `forceEnd()` — `WinnerID = NULL`, no rating touched.
 
@@ -56,16 +56,14 @@ server/
 └── ServerMain.java                         constructs + starts SessionWatchdog, Started record carries it
 
 server/dao/
-├── GameSessionDao.java                     + abandon(int sessionId, int winnerUserId)
+├── GameSessionDao.java                     + abandon(int sessionId, Integer winnerUserId),
+│                                              currentTurnStartedAt(int sessionId)
 └── JdbcGameSessionDao.java                 + abandon() (guarded UPDATE + applyEloAndRecordResult reuse),
-                                              all ResultSet-mapping methods + TurnStartedAt -> GameStateDTO
+                                              currentTurnStartedAt() (lean single-column query)
 
-src/test/.../server/dao/InMemoryGameSessionDao.java   + abandon(), turnStartedAt on its fake rows
+src/test/.../server/dao/InMemoryGameSessionDao.java   + abandon(), a parallel turnStartedAt map
 
-common/dto/GameStateDTO.java                + turnStartedAt (Instant), all construction sites updated
 common/enums/GameEventType.java             + SESSION_ABANDONED
-
-server/rmi/PlayerServiceImpl.java           joinQueue()/makeMove() pass turnStartedAt through
 
 client/communication/ServerConnection.java          + keepAlive(String)
 client/communication/RmiJmsServerConnection.java    + keepAlive() -> authService.keepAlive()
@@ -89,7 +87,7 @@ src/main/resources/.../turn.wav (or similar)  new bundled asset
 
 **Presence:** every authenticated RMI call (`makeMove`, `joinQueue`, `keepAlive`, etc.) resolves the caller's token through `SessionManager.resolve()`, which now also stamps `lastSeenByUserId`. A client that's actively playing stays "seen" purely as a side effect of play; a client that's idle-but-connected (waiting for the opponent) stays "seen" only because of its background 15s `keepAlive` ping.
 
-**Sweep:** every 5s, `SessionWatchdog` asks `GameSessionDao.findAllActive()` for the current `ACTIVE` sessions, checks both participants' `lastSeen` and the current turn holder's `turnStartedAt` against the two 60s thresholds, and for any session that trips either one, calls `GameSessionDao.abandon(sessionId, winnerId)`. On success, publishes `SESSION_ABANDONED` to `session.{id}.events`.
+**Sweep:** every 5s, `SessionWatchdog` asks `GameSessionDao.findAllActive()` for the current `ACTIVE` sessions, checks both participants' `lastSeen` and (via `currentTurnStartedAt()`) the current turn holder's start time against the two 60s thresholds, and for any session that trips either one, calls `GameSessionDao.abandon(sessionId, winnerId)`. On success, publishes `SESSION_ABANDONED` to `session.{id}.events`.
 
 **Client side:** both players (already subscribed to the session's topic, per the existing "subscribe before anything else" rule) receive the `SESSION_ABANDONED` event and refresh their Game Board the same way a `SESSION_FORCE_ENDED` push already does — showing the game as ended, with a winner. The waiting-but-not-disconnected player's own 15s `keepAlive` ping is what kept them from being the one who gets abandoned in the first place.
 
