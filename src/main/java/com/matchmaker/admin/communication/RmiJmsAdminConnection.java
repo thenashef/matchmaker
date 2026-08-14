@@ -63,6 +63,15 @@ public class RmiJmsAdminConnection implements AdminConnection {
     }
 
     @Override
+    public void keepAlive(String sessionToken) throws AuthenticationException {
+        try {
+            authService.keepAlive(sessionToken);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("keepAlive() failed", e);
+        }
+    }
+
+    @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException, NotAdminException {
         try {
             return adminService.listGameTypes(sessionToken);

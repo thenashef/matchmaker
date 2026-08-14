@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -65,6 +66,24 @@ class AdminClientServiceTest {
 
         assertEquals("admin", result.getUsername());
         assertEquals(1, service.getCurrentUser().getId());
+    }
+
+    @Test
+    void login_startsPeriodicKeepAlivePings() throws Exception {
+        AdminClientService fastKeepAliveService = new AdminClientService(adminConnection, Duration.ofMillis(20));
+        UserDTO admin = new UserDTO(1, "admin", true, 0, 0, 0, 1200);
+        adminConnection.setLoginResult(new LoginResultDTO(admin, "token-1"));
+
+        this.<UserDTO>await(capture -> fastKeepAliveService.login(
+                "admin", "pw", capture, () -> fail("should not be rejected"), err -> fail(String.valueOf(err))));
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (adminConnection.keepAliveCallCount() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        fastKeepAliveService.shutdown();
+        assertTrue(adminConnection.keepAliveCallCount() >= 2, "expected at least 2 keepAlive pings");
     }
 
     @Test

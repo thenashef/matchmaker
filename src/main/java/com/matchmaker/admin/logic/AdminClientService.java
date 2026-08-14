@@ -8,26 +8,36 @@ import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
 import javafx.application.Platform;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class AdminClientService {
 
     private final AdminConnection adminConnection;
+    private final Duration keepAliveInterval;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "admin-communication");
         thread.setDaemon(true);
         return thread;
     });
+    private ScheduledExecutorService keepAliveExecutor;
 
     private UserDTO currentUser;
     private String sessionToken;
     private Subscription sessionSubscription;
 
     public AdminClientService(AdminConnection adminConnection) {
+        this(adminConnection, Duration.ofSeconds(15));
+    }
+
+    AdminClientService(AdminConnection adminConnection, Duration keepAliveInterval) {
         this.adminConnection = adminConnection;
+        this.keepAliveInterval = keepAliveInterval;
     }
 
     public UserDTO getCurrentUser() {
@@ -44,6 +54,7 @@ public class AdminClientService {
                     }
                     currentUser = result.getUser();
                     sessionToken = result.getSessionToken();
+                    startKeepAlive();
                     onSuccess.accept(result.getUser());
                 },
                 onError);
@@ -83,6 +94,25 @@ public class AdminClientService {
 
     public void shutdown() {
         backgroundExecutor.shutdownNow();
+        if (keepAliveExecutor != null) {
+            keepAliveExecutor.shutdownNow();
+        }
+    }
+
+    private void startKeepAlive() {
+        keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "keep-alive");
+            thread.setDaemon(true);
+            return thread;
+        });
+        long intervalMillis = keepAliveInterval.toMillis();
+        keepAliveExecutor.scheduleAtFixedRate(() -> {
+            try {
+                adminConnection.keepAlive(sessionToken);
+            } catch (Exception e) {
+                System.err.println("keepAlive failed: " + e.getMessage());
+            }
+        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
     private <T> void runAsync(ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {

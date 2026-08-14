@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class InMemoryAdminConnection implements AdminConnection {
 
@@ -23,6 +24,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     private List<GameStateDTO> activeSessions = new ArrayList<>();
     private boolean forceEndSessionCalled = false;
     private NotAdminException notAdminFailure;
+    private final AtomicInteger keepAliveCallCount = new AtomicInteger();
 
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
 
@@ -34,11 +36,17 @@ public class InMemoryAdminConnection implements AdminConnection {
     public void setActiveSessions(List<GameStateDTO> activeSessions) { this.activeSessions = activeSessions; }
     public void setNotAdminFailure(NotAdminException failure) { this.notAdminFailure = failure; }
     public boolean wasForceEndSessionCalled() { return forceEndSessionCalled; }
+    public int keepAliveCallCount() { return keepAliveCallCount.get(); }
 
     @Override
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
         if (loginFailure != null) throw loginFailure;
         return loginResult;
+    }
+
+    @Override
+    public void keepAlive(String sessionToken) {
+        keepAliveCallCount.incrementAndGet();
     }
 
     @Override

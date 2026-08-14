@@ -18,6 +18,8 @@ public interface ServerConnection {
 
     LoginResultDTO login(String username, String password) throws AuthenticationException;
 
+    void keepAlive(String sessionToken) throws AuthenticationException;
+
     List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException;
 
     GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws AuthenticationException;

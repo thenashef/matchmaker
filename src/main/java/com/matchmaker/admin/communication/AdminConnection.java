@@ -13,6 +13,8 @@ public interface AdminConnection {
 
     LoginResultDTO login(String username, String password) throws AuthenticationException;
 
+    void keepAlive(String sessionToken) throws AuthenticationException;
+
     List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException, NotAdminException;
 
     GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)

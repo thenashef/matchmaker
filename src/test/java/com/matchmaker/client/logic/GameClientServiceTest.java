@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -236,6 +237,24 @@ class GameClientServiceTest {
         service.leaveGame();
 
         assertFalse(serverConnection.isSubscribedToSessionTopic(5));
+    }
+
+    @Test
+    void login_startsPeriodicKeepAlivePings() throws Exception {
+        GameClientService fastKeepAliveService = new GameClientService(serverConnection, Duration.ofMillis(20));
+        UserDTO user = new UserDTO(1, "user1", false, 0, 0, 0, 1000);
+        serverConnection.setLoginResult(new LoginResultDTO(user, "token-1"));
+
+        this.<UserDTO>await(capture ->
+                fastKeepAliveService.login("user1", "pw", capture, err -> fail(String.valueOf(err))));
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (serverConnection.keepAliveCallCount() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+
+        fastKeepAliveService.shutdown();
+        assertTrue(serverConnection.keepAliveCallCount() >= 2, "expected at least 2 keepAlive pings");
     }
 
     private void loginAsUser(int userId) throws InterruptedException {

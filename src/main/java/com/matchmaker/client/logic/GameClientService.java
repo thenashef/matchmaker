@@ -9,19 +9,24 @@ import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.enums.GameEventType;
 import javafx.application.Platform;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class GameClientService {
 
     private final ServerConnection serverConnection;
+    private final Duration keepAliveInterval;
     private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "server-communication");
         thread.setDaemon(true);
         return thread;
     });
+    private ScheduledExecutorService keepAliveExecutor;
 
     private UserDTO currentUser;
     private String sessionToken;
@@ -34,7 +39,12 @@ public class GameClientService {
     private volatile Consumer<GameStateDTO> gameUpdateListener;
 
     public GameClientService(ServerConnection serverConnection) {
+        this(serverConnection, Duration.ofSeconds(15));
+    }
+
+    GameClientService(ServerConnection serverConnection, Duration keepAliveInterval) {
         this.serverConnection = serverConnection;
+        this.keepAliveInterval = keepAliveInterval;
     }
 
     public UserDTO getCurrentUser() {
@@ -46,6 +56,7 @@ public class GameClientService {
                 result -> {
                     currentUser = result.getUser();
                     sessionToken = result.getSessionToken();
+                    startKeepAlive();
                     onSuccess.accept(result.getUser());
                 },
                 onError);
@@ -112,6 +123,25 @@ public class GameClientService {
 
     public void shutdown() {
         backgroundExecutor.shutdownNow();
+        if (keepAliveExecutor != null) {
+            keepAliveExecutor.shutdownNow();
+        }
+    }
+
+    private void startKeepAlive() {
+        keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "keep-alive");
+            thread.setDaemon(true);
+            return thread;
+        });
+        long intervalMillis = keepAliveInterval.toMillis();
+        keepAliveExecutor.scheduleAtFixedRate(() -> {
+            try {
+                serverConnection.keepAlive(sessionToken);
+            } catch (Exception e) {
+                System.err.println("keepAlive failed: " + e.getMessage());
+            }
+        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
     /** Subscribes to the session's topic the instant a session id is known -- before returning

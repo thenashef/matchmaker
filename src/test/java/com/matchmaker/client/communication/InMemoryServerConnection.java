@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class InMemoryServerConnection implements ServerConnection {
 
@@ -28,6 +29,7 @@ public class InMemoryServerConnection implements ServerConnection {
     private boolean cancelQueueCalled = false;
     private GameStateDTO makeMoveResult;
     private IllegalMoveException makeMoveFailure;
+    private final AtomicInteger keepAliveCallCount = new AtomicInteger();
 
     private final List<MakeMoveCall> makeMoveCalls = new ArrayList<>();
     private final Map<Integer, List<ServerEventListener>> playerQueueListeners = new HashMap<>();
@@ -43,6 +45,7 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setMakeMoveFailure(IllegalMoveException failure) { this.makeMoveFailure = failure; }
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
     public List<MakeMoveCall> makeMoveCalls() { return makeMoveCalls; }
+    public int keepAliveCallCount() { return keepAliveCallCount.get(); }
 
     @Override
     public UserDTO register(String username, String password) throws UsernameTakenException {
@@ -54,6 +57,11 @@ public class InMemoryServerConnection implements ServerConnection {
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
         if (loginFailure != null) throw loginFailure;
         return loginResult;
+    }
+
+    @Override
+    public void keepAlive(String sessionToken) {
+        keepAliveCallCount.incrementAndGet();
     }
 
     @Override

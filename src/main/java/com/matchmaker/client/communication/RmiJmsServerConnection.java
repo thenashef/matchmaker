@@ -75,6 +75,15 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     @Override
+    public void keepAlive(String sessionToken) throws AuthenticationException {
+        try {
+            authService.keepAlive(sessionToken);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("keepAlive() failed", e);
+        }
+    }
+
+    @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException {
         try {
             return playerService.listGameTypes(sessionToken);
