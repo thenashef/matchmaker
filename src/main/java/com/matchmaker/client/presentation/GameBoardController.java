@@ -8,6 +8,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.media.AudioClip;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import org.json.JSONArray;
@@ -19,6 +20,8 @@ import java.util.List;
 public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
+    private static final AudioClip TURN_SOUND = new AudioClip(
+            GameBoardController.class.getResource("turn.wav").toExternalForm());
 
     @FXML private Circle colorIndicator;
     @FXML private Label colorLabel;
@@ -51,6 +54,10 @@ public class GameBoardController {
         submitButton.setDisable(finished);
         clearButton.setDisable(finished);
         backToLobbyButton.setVisible(finished);
+
+        if (isMyTurn()) {
+            TURN_SOUND.play();
+        }
     }
 
     private void updateStatusLabel(GameStateDTO state) {
