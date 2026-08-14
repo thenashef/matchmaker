@@ -123,6 +123,11 @@ public class JdbcGameSessionDao implements GameSessionDao {
                     conn.rollback();
                     return Optional.empty();
                 }
+                if (winnerUserId != null && before.get().getPlayer1Id() != winnerUserId
+                        && before.get().getPlayer2Id() != winnerUserId) {
+                    throw new IllegalArgumentException(
+                            "winnerUserId " + winnerUserId + " is not a participant in session " + sessionId);
+                }
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     if (winnerUserId != null) {
@@ -148,7 +153,14 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 Optional<GameStateDTO> after = findAnyById(conn, sessionId);
                 conn.commit();
                 return after;
-            } catch (SQLException e) {
+            } catch (IllegalArgumentException e) {
+                conn.rollback();
+                throw e;
+            } catch (SQLException | RuntimeException e) {
+                // Catching RuntimeException too, not just SQLException -- an unexpected failure
+                // partway through (e.g. GameStatus.valueOf() on a surprising row) must still roll
+                // back rather than fall straight to the finally block's setAutoCommit(true), which
+                // per the JDBC spec would otherwise commit whatever was left in flight.
                 conn.rollback();
                 throw new DaoException("Failed to abandon session " + sessionId, e);
             } finally {

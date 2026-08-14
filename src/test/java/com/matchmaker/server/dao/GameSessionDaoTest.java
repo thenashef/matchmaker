@@ -216,6 +216,16 @@ class GameSessionDaoTest {
     }
 
     @Test
+    void abandon_winnerNotAParticipant_throwsAndLeavesSessionActive() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        int strangerId = insertUser("stranger");
+
+        assertThrows(IllegalArgumentException.class, () -> gameSessionDao.abandon(sessionId, strangerId));
+
+        assertTrue(gameSessionDao.findActiveById(sessionId).isPresent());
+    }
+
+    @Test
     void currentTurnStartedAt_activeSessionWithTurnStartedAtSet_returnsARecentInstant() throws Exception {
         int sessionId = insertActiveSessionWithTurnStartedAt(player1Id, player2Id, gameTypeId);
 
