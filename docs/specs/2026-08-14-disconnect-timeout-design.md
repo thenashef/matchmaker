@@ -111,4 +111,7 @@ src/main/resources/.../turn.wav (or similar)  new bundled asset
 
 - **Rematch** and **JMS broker-level authentication/authorization** — both deferred to be picked up after this lands; full detail already recorded in `docs/build-plan.md`'s "Next Steps" section.
 - Live revocation of an already-open JMS connection when a session times out — not applicable here (this doc doesn't touch JMS auth at all, deferred alongside the broker-security work above).
-- Any UI indicator *counting down* the turn or disconnect clock — this doc only covers detection + the sound cue on turn-start, not a visible timer widget.
+
+## Addendum: turn countdown display (decided after initial implementation)
+
+**`GameBoardController` shows a visible 60s countdown while it's the logged-in player's turn**, via a `javafx.animation.Timeline` ticking every second, alongside the existing turn-start sound. Purely a local approximation, not driven by the server's real `TurnStartedAt` — the client has no access to that timestamp (see Decision 4's reasoning for keeping it server-only), so the countdown starts at 60 from the moment the client itself learns it's its turn, which can be a second or two ahead of the server's actual clock (network latency). This is display-only: reaching 0 client-side does nothing by itself — the server's `SessionWatchdog` remains the sole authority on when a turn actually times out, and the game only really ends once a `SESSION_ABANDONED` push arrives. The countdown is explicitly stopped (not just left to finish) both when a state update shows it's no longer the player's turn and when leaving the game board, to avoid a stale `Timeline` from an old screen instance continuing to tick in the background.

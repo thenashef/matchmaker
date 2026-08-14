@@ -3,6 +3,8 @@ package com.matchmaker.client.presentation;
 import com.matchmaker.client.logic.GameClientService;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -11,6 +13,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.media.AudioClip;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.util.Duration;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -20,12 +23,14 @@ import java.util.List;
 public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
+    private static final int TURN_TIMEOUT_SECONDS = 60;
     private static final AudioClip TURN_SOUND = new AudioClip(
             GameBoardController.class.getResource("turn.wav").toExternalForm());
 
     @FXML private Circle colorIndicator;
     @FXML private Label colorLabel;
     @FXML private Label statusLabel;
+    @FXML private Label turnTimerLabel;
     @FXML private GridPane boardGrid;
     @FXML private Button submitButton;
     @FXML private Button clearButton;
@@ -35,6 +40,7 @@ public class GameBoardController {
     private SceneNavigator navigator;
     private GameStateDTO currentState;
     private final List<String> selectedPath = new ArrayList<>();
+    private Timeline turnCountdown;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
         this.gameClientService = gameClientService;
@@ -55,9 +61,37 @@ public class GameBoardController {
         clearButton.setDisable(finished);
         backToLobbyButton.setVisible(finished);
 
-        if (isMyTurn()) {
+        if (isMyTurn() && !finished) {
             TURN_SOUND.play();
+            startTurnCountdown();
+        } else {
+            stopTurnCountdown();
         }
+    }
+
+    /** Purely a local display -- the server is authoritative on turn timeout (SessionWatchdog),
+     *  and it doesn't know the server's exact TurnStartedAt, so this approximates by counting
+     *  down from the moment this client learns it's its turn rather than the server's real start
+     *  time. Reaching 0 here does nothing on its own; the game only actually ends once a
+     *  SESSION_ABANDONED push arrives and applyState() runs again. */
+    private void startTurnCountdown() {
+        stopTurnCountdown();
+        int[] secondsLeft = {TURN_TIMEOUT_SECONDS};
+        turnTimerLabel.setText("Time remaining: " + secondsLeft[0] + "s");
+        turnCountdown = new Timeline(new KeyFrame(Duration.seconds(1), event -> {
+            secondsLeft[0] = Math.max(0, secondsLeft[0] - 1);
+            turnTimerLabel.setText("Time remaining: " + secondsLeft[0] + "s");
+        }));
+        turnCountdown.setCycleCount(TURN_TIMEOUT_SECONDS);
+        turnCountdown.play();
+    }
+
+    private void stopTurnCountdown() {
+        if (turnCountdown != null) {
+            turnCountdown.stop();
+            turnCountdown = null;
+        }
+        turnTimerLabel.setText("");
     }
 
     private void updateStatusLabel(GameStateDTO state) {
@@ -169,6 +203,7 @@ public class GameBoardController {
 
     @FXML
     private void onBackToLobby() {
+        stopTurnCountdown();
         gameClientService.leaveGame();
         LobbyController controller = navigator.show("LobbyView.fxml",
                 "MatchMaker - Lobby (" + gameClientService.getCurrentUser().getUsername() + ")");

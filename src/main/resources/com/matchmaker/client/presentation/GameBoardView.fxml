@@ -17,6 +17,7 @@
                 <Label fx:id="colorLabel" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
             </HBox>
             <Label fx:id="statusLabel" style="-fx-font-size: 16px;"/>
+            <Label fx:id="turnTimerLabel" style="-fx-font-size: 14px; -fx-text-fill: #b03a2e;"/>
         </VBox>
     </top>
     <center>
