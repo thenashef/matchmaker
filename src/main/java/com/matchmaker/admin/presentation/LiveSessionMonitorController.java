@@ -41,7 +41,8 @@ public class LiveSessionMonitorController {
     }
 
     private void onEvent(GameEventDTO event) {
-        if (event.getType() != GameEventType.MOVE_MADE && event.getType() != GameEventType.SESSION_FORCE_ENDED) {
+        if (event.getType() != GameEventType.MOVE_MADE && event.getType() != GameEventType.SESSION_FORCE_ENDED
+                && event.getType() != GameEventType.SESSION_ABANDONED) {
             return;
         }
         Platform.runLater(() -> applyState(event.getGameState()));
