@@ -208,6 +208,25 @@ class GameClientServiceTest {
     }
 
     @Test
+    void enterGame_pushedSessionAbandonedEvent_alsoReachesTheAttachedGameUpdateListener() throws Exception {
+        loginAsUser(1);
+        GameStateDTO matched = new GameStateDTO(5, 1, 1, 2, GameStatus.ACTIVE, 1, null, "{\"pieces\":{}}");
+        serverConnection.setJoinQueueResult(matched);
+        this.<GameStateDTO>await(capture -> service.joinQueue(1, capture, () -> fail("immediate"), err -> fail(String.valueOf(err))));
+
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<GameStateDTO> captured = new AtomicReference<>();
+        service.attachGameUpdateListener(state -> { captured.set(state); latch.countDown(); });
+
+        GameStateDTO abandoned = new GameStateDTO(5, 1, 1, 2, GameStatus.ABANDONED, null, 2, "{\"pieces\":{}}");
+        serverConnection.fireSessionTopicEvent(5, new GameEventDTO(GameEventType.SESSION_ABANDONED, 5, abandoned));
+
+        assertTrue(latch.await(2, TimeUnit.SECONDS));
+        assertEquals(GameStatus.ABANDONED, captured.get().getStatus());
+        assertEquals(Integer.valueOf(2), captured.get().getWinnerId());
+    }
+
+    @Test
     void leaveGame_closesSessionTopicSubscriptionAndStopsUpdates() throws Exception {
         loginAsUser(1);
         GameStateDTO matched = new GameStateDTO(5, 1, 1, 2, GameStatus.ACTIVE, 1, null, "{\"pieces\":{}}");
