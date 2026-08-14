@@ -22,6 +22,12 @@ public class SessionWatchdog {
     private final GameEventPublisher gameEventPublisher;
     private final Duration disconnectTimeout;
     private final Duration turnTimeout;
+    // A user who was never seen at all (SessionManager restarted with the process, or the sweep
+    // ran before they had a chance to log back in and start pinging) must not be treated as
+    // silent until this much time has passed since the watchdog itself started -- otherwise every
+    // in-flight session gets abandoned within one tick of every server restart, regardless of
+    // whether anyone actually disconnected.
+    private final Instant startedAt = Instant.now();
 
     private ScheduledExecutorService executor;
 
@@ -52,9 +58,25 @@ public class SessionWatchdog {
     }
 
     public void sweepOnce() {
-        List<GameStateDTO> activeSessions = gameSessionDao.findAllActive();
+        List<GameStateDTO> activeSessions;
+        try {
+            activeSessions = gameSessionDao.findAllActive();
+        } catch (Exception e) {
+            // A transient DB failure must not escape this method -- scheduleAtFixedRate silently
+            // stops running a task forever the first time it throws, which would permanently and
+            // invisibly kill all disconnect/turn-timeout detection for the rest of the process.
+            System.err.println("SessionWatchdog: failed to list active sessions: " + e.getMessage());
+            return;
+        }
         for (GameStateDTO session : activeSessions) {
-            checkSession(session);
+            try {
+                checkSession(session);
+            } catch (Exception e) {
+                // One bad session (e.g. an unexpected DB state) must not prevent every other
+                // session in this same tick from being checked.
+                System.err.println("SessionWatchdog: failed to check session " + session.getSessionId()
+                        + ": " + e.getMessage());
+            }
         }
     }
 
@@ -91,7 +113,10 @@ public class SessionWatchdog {
 
     private boolean isSilent(int userId) {
         Optional<Instant> lastSeen = sessionManager.lastSeen(userId);
-        return lastSeen.isEmpty() || isOlderThan(lastSeen.get(), disconnectTimeout);
+        if (lastSeen.isEmpty()) {
+            return isOlderThan(startedAt, disconnectTimeout);
+        }
+        return isOlderThan(lastSeen.get(), disconnectTimeout);
     }
 
     private boolean isOlderThan(Instant instant, Duration threshold) {
