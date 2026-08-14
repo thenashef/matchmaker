@@ -110,8 +110,11 @@ public class JdbcGameSessionDao implements GameSessionDao {
 
     @Override
     public Optional<GameStateDTO> abandon(int sessionId, Integer winnerUserId) {
-        String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW() "
-                + "WHERE ID = ? AND Status = 'ACTIVE'";
+        // CurrentTurnUserID must be cleared, same as a normal FINISHED game -- otherwise the
+        // last GameStateDTO a client sees still names them as the turn holder, and
+        // GameBoardController would (incorrectly) keep treating the game as still in progress.
+        String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW(), "
+                + "CurrentTurnUserID = NULL WHERE ID = ? AND Status = 'ACTIVE'";
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
             try {

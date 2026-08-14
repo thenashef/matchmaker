@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -177,10 +178,15 @@ class GameSessionDaoTest {
         assertTrue(result.isPresent());
         assertEquals(GameStatus.ABANDONED, result.get().getStatus());
         assertEquals(Integer.valueOf(player1Id), result.get().getWinnerId());
+        // A stale CurrentTurnUserID would make the client's board keep thinking the game is
+        // still in progress and it's still someone's turn -- see GameBoardController.applyState().
+        assertNull(result.get().getCurrentTurnUserId());
         assertTrue(ratingOf(player1Id) > player1RatingBefore);
         assertTrue(ratingOf(player2Id) < player2RatingBefore);
         assertEquals(1, winsOf(player1Id));
         assertEquals(1, lossesOf(player2Id));
+        assertEquals(0, winsOf(player2Id));
+        assertEquals(0, lossesOf(player1Id));
         assertTrue(gameSessionDao.findActiveById(sessionId).isEmpty());
     }
 
@@ -194,7 +200,8 @@ class GameSessionDaoTest {
 
         assertTrue(result.isPresent());
         assertEquals(GameStatus.ABANDONED, result.get().getStatus());
-        assertEquals(null, result.get().getWinnerId());
+        assertNull(result.get().getWinnerId());
+        assertNull(result.get().getCurrentTurnUserId());
         assertEquals(player1RatingBefore, ratingOf(player1Id));
         assertEquals(player2RatingBefore, ratingOf(player2Id));
         assertEquals(0, winsOf(player1Id));

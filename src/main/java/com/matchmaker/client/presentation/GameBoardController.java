@@ -56,12 +56,15 @@ public class GameBoardController {
         renderBoard(state);
         updateStatusLabel(state);
 
-        boolean finished = state.getStatus() == GameStatus.FINISHED;
-        submitButton.setDisable(finished);
-        clearButton.setDisable(finished);
-        backToLobbyButton.setVisible(finished);
+        // ABANDONED (auto-forfeit via disconnect/turn-timeout, or an admin force-end) ends the
+        // game exactly like FINISHED does from the board's point of view -- only a status of
+        // ACTIVE means the game is actually still being played.
+        boolean ended = state.getStatus() != GameStatus.ACTIVE;
+        submitButton.setDisable(ended);
+        clearButton.setDisable(ended);
+        backToLobbyButton.setVisible(ended);
 
-        if (isMyTurn() && !finished) {
+        if (isMyTurn() && !ended) {
             TURN_SOUND.play();
             startTurnCountdown();
         } else {
@@ -104,6 +107,16 @@ public class GameBoardController {
                 statusLabel.setText("You won!");
             } else {
                 statusLabel.setText("You lost.");
+            }
+        } else if (state.getStatus() == GameStatus.ABANDONED) {
+            Integer winnerId = state.getWinnerId();
+            int myId = gameClientService.getCurrentUser().getId();
+            if (winnerId == null) {
+                statusLabel.setText("Game ended -- both players disconnected.");
+            } else if (winnerId == myId) {
+                statusLabel.setText("You won -- your opponent disconnected or ran out of time.");
+            } else {
+                statusLabel.setText("Game over -- you disconnected or ran out of time.");
             }
         } else {
             statusLabel.setText(isMyTurn() ? "Your turn" : "Waiting for opponent...");
