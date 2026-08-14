@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Types;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -208,12 +209,17 @@ class GameSessionDaoTest {
     }
 
     @Test
-    void currentTurnStartedAt_activeSessionWithTurnStartedAtSet_returnsIt() throws Exception {
+    void currentTurnStartedAt_activeSessionWithTurnStartedAtSet_returnsARecentInstant() throws Exception {
         int sessionId = insertActiveSessionWithTurnStartedAt(player1Id, player2Id, gameTypeId);
 
         Optional<Instant> turnStartedAt = gameSessionDao.currentTurnStartedAt(sessionId);
 
         assertTrue(turnStartedAt.isPresent());
+        // Guards against a DB/JVM timezone mismatch silently producing an instant hours off --
+        // that would make SessionWatchdog's turn-timeout check fire immediately (or never), and
+        // a bare isPresent() assertion here would never catch it.
+        assertTrue(Duration.between(turnStartedAt.get(), Instant.now()).abs().toSeconds() < 60,
+                "expected TurnStartedAt to read back within 60s of now, was " + turnStartedAt.get());
     }
 
     @Test

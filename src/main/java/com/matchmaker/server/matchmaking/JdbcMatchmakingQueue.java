@@ -145,18 +145,19 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
             return null;
         }
 
-        Timestamp now = new Timestamp(System.currentTimeMillis());
+        // TurnStartedAt/StartTime are evaluated by MySQL's own NOW(), not a Java-side Timestamp --
+        // JdbcGameSessionDao.recordMove() and currentTurnStartedAt() both trust NOW()/the DB's
+        // stored value directly, so this write path has to agree with them on which clock is
+        // authoritative rather than risk a JVM-vs-server timezone mismatch on the very first read.
         String insertSessionSql = "INSERT INTO GameSession "
                 + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, TurnStartedAt, StartTime) "
-                + "VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?)";
+                + "VALUES (?, ?, ?, 'ACTIVE', ?, NOW(), NOW())";
         int sessionId;
         try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setInt(1, gameTypeId);
             stmt.setInt(2, opponentUserId);
             stmt.setInt(3, userId);
             stmt.setInt(4, opponentUserId);
-            stmt.setTimestamp(5, now);
-            stmt.setTimestamp(6, now);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();

@@ -4,6 +4,8 @@ import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.server.TestDatabase;
 import com.matchmaker.server.dao.DataSourceFactory;
+import com.matchmaker.server.dao.GameSessionDao;
+import com.matchmaker.server.dao.JdbcGameSessionDao;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +14,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -27,6 +32,7 @@ class MatchmakingQueueTest {
     private static final DataSource DATA_SOURCE = DataSourceFactory.create();
 
     private final MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(DATA_SOURCE);
+    private final GameSessionDao gameSessionDao = new JdbcGameSessionDao(DATA_SOURCE);
 
     private int gameTypeId;
 
@@ -62,6 +68,16 @@ class MatchmakingQueueTest {
         assertEquals(aliceId, result.getCurrentTurnUserId());
         assertNull(result.getWinnerId());
         assertEquals(0, countQueueRows());
+
+        // Regression check: JdbcMatchmakingQueue and JdbcGameSessionDao must agree on how
+        // TurnStartedAt is written/read, or SessionWatchdog's turn-timeout check can fire
+        // immediately (or never) on a DB/JVM timezone mismatch -- see currentTurnStartedAt()'s
+        // own test for the read-side half of this same guard.
+        Optional<Instant> turnStartedAt = gameSessionDao.currentTurnStartedAt(result.getSessionId());
+        assertTrue(turnStartedAt.isPresent());
+        assertTrue(Duration.between(turnStartedAt.get(), Instant.now()).abs().toSeconds() < 60,
+                "expected the newly matched session's TurnStartedAt to read back within 60s of now, was "
+                        + turnStartedAt.get());
     }
 
     @Test
