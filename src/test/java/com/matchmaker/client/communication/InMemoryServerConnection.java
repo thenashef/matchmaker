@@ -30,6 +30,7 @@ public class InMemoryServerConnection implements ServerConnection {
     private GameStateDTO makeMoveResult;
     private IllegalMoveException makeMoveFailure;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
+    private volatile String lastKeepAliveToken;
 
     private final List<MakeMoveCall> makeMoveCalls = new ArrayList<>();
     private final Map<Integer, List<ServerEventListener>> playerQueueListeners = new HashMap<>();
@@ -46,6 +47,7 @@ public class InMemoryServerConnection implements ServerConnection {
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
     public List<MakeMoveCall> makeMoveCalls() { return makeMoveCalls; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
+    public String lastKeepAliveToken() { return lastKeepAliveToken; }
 
     @Override
     public UserDTO register(String username, String password) throws UsernameTakenException {
@@ -61,6 +63,7 @@ public class InMemoryServerConnection implements ServerConnection {
 
     @Override
     public void keepAlive(String sessionToken) {
+        lastKeepAliveToken = sessionToken;
         keepAliveCallCount.incrementAndGet();
     }
 

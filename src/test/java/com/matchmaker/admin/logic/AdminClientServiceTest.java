@@ -84,6 +84,7 @@ class AdminClientServiceTest {
 
         fastKeepAliveService.shutdown();
         assertTrue(adminConnection.keepAliveCallCount() >= 2, "expected at least 2 keepAlive pings");
+        assertEquals("token-1", adminConnection.lastKeepAliveToken());
     }
 
     @Test

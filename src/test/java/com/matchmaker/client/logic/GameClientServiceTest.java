@@ -255,6 +255,7 @@ class GameClientServiceTest {
 
         fastKeepAliveService.shutdown();
         assertTrue(serverConnection.keepAliveCallCount() >= 2, "expected at least 2 keepAlive pings");
+        assertEquals("token-1", serverConnection.lastKeepAliveToken());
     }
 
     private void loginAsUser(int userId) throws InterruptedException {

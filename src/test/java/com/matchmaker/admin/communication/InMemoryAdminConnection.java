@@ -25,6 +25,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     private boolean forceEndSessionCalled = false;
     private NotAdminException notAdminFailure;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
+    private volatile String lastKeepAliveToken;
 
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
 
@@ -37,6 +38,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     public void setNotAdminFailure(NotAdminException failure) { this.notAdminFailure = failure; }
     public boolean wasForceEndSessionCalled() { return forceEndSessionCalled; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
+    public String lastKeepAliveToken() { return lastKeepAliveToken; }
 
     @Override
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
@@ -46,6 +48,7 @@ public class InMemoryAdminConnection implements AdminConnection {
 
     @Override
     public void keepAlive(String sessionToken) {
+        lastKeepAliveToken = sessionToken;
         keepAliveCallCount.incrementAndGet();
     }
 
