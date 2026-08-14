@@ -27,11 +27,15 @@ import javax.sql.DataSource;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.time.Duration;
 
 public class ServerMain {
 
     public static final int RMI_PORT = 1099;
     public static final int JMS_PORT = 61616;
+    private static final Duration DISCONNECT_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration TURN_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration WATCHDOG_TICK_INTERVAL = Duration.ofSeconds(5);
 
     public static void main(String[] args) throws Exception {
         start(RMI_PORT, JMS_PORT);
@@ -83,10 +87,14 @@ public class ServerMain {
         registry.rebind("PlayerService", playerService);
         registry.rebind("AdminService", adminService);
 
-        return new Started(jmsBroker, registry, authService, playerService, adminService);
+        SessionWatchdog sessionWatchdog = new SessionWatchdog(
+                sessionManager, gameSessionDao, gameEventPublisher, DISCONNECT_TIMEOUT, TURN_TIMEOUT);
+        sessionWatchdog.start(WATCHDOG_TICK_INTERVAL);
+
+        return new Started(jmsBroker, registry, authService, playerService, adminService, sessionWatchdog);
     }
 
     record Started(BrokerService jmsBroker, Registry registry, AuthServiceImpl authService,
-                    PlayerServiceImpl playerService, AdminServiceImpl adminService) {
+                    PlayerServiceImpl playerService, AdminServiceImpl adminService, SessionWatchdog sessionWatchdog) {
     }
 }

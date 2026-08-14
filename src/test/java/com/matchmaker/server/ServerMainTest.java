@@ -50,6 +50,9 @@ class ServerMainTest {
         if (started != null && started.jmsBroker() != null) {
             try { started.jmsBroker().stop(); } catch (Exception ignored) { }
         }
+        if (started != null && started.sessionWatchdog() != null) {
+            started.sessionWatchdog().stop();
+        }
     }
 
     @Test
