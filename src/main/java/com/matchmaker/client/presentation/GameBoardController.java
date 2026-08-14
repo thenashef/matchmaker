@@ -24,8 +24,21 @@ public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
     private static final int TURN_TIMEOUT_SECONDS = 60;
-    private static final AudioClip TURN_SOUND = new AudioClip(
-            GameBoardController.class.getResource("turn.wav").toExternalForm());
+    // Loaded defensively, not as a plain `= new AudioClip(...)` field initializer -- a null
+    // resource (repackaging, a missing javafx-media native for this platform) would otherwise
+    // throw inside <clinit>, which is an ExceptionInInitializerError that permanently prevents
+    // this class from ever loading again, bricking the whole game board over a missing sound.
+    private static final AudioClip TURN_SOUND = loadTurnSound();
+
+    private static AudioClip loadTurnSound() {
+        try {
+            var resource = GameBoardController.class.getResource("turn.wav");
+            return resource == null ? null : new AudioClip(resource.toExternalForm());
+        } catch (Exception e) {
+            System.err.println("Failed to load turn-notification sound: " + e.getMessage());
+            return null;
+        }
+    }
 
     @FXML private Circle colorIndicator;
     @FXML private Label colorLabel;
@@ -65,7 +78,9 @@ public class GameBoardController {
         backToLobbyButton.setVisible(ended);
 
         if (isMyTurn() && !ended) {
-            TURN_SOUND.play();
+            if (TURN_SOUND != null) {
+                TURN_SOUND.play();
+            }
             startTurnCountdown();
         } else {
             stopTurnCountdown();
