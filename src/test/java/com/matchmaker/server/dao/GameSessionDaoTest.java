@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.Types;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -164,9 +165,82 @@ class GameSessionDaoTest {
         assertTrue(gameSessionDao.forceEnd(sessionId).isEmpty());
     }
 
+    @Test
+    void abandon_withWinner_setsAbandonedAndUpdatesRatingsLikeAWin() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        int player1RatingBefore = ratingOf(player1Id);
+        int player2RatingBefore = ratingOf(player2Id);
+
+        Optional<GameStateDTO> result = gameSessionDao.abandon(sessionId, player1Id);
+
+        assertTrue(result.isPresent());
+        assertEquals(GameStatus.ABANDONED, result.get().getStatus());
+        assertEquals(Integer.valueOf(player1Id), result.get().getWinnerId());
+        assertTrue(ratingOf(player1Id) > player1RatingBefore);
+        assertTrue(ratingOf(player2Id) < player2RatingBefore);
+        assertEquals(1, winsOf(player1Id));
+        assertEquals(1, lossesOf(player2Id));
+        assertTrue(gameSessionDao.findActiveById(sessionId).isEmpty());
+    }
+
+    @Test
+    void abandon_withoutWinner_setsAbandonedAndLeavesRatingsUntouched() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        int player1RatingBefore = ratingOf(player1Id);
+        int player2RatingBefore = ratingOf(player2Id);
+
+        Optional<GameStateDTO> result = gameSessionDao.abandon(sessionId, null);
+
+        assertTrue(result.isPresent());
+        assertEquals(GameStatus.ABANDONED, result.get().getStatus());
+        assertEquals(null, result.get().getWinnerId());
+        assertEquals(player1RatingBefore, ratingOf(player1Id));
+        assertEquals(player2RatingBefore, ratingOf(player2Id));
+        assertEquals(0, winsOf(player1Id));
+        assertEquals(0, lossesOf(player2Id));
+    }
+
+    @Test
+    void abandon_alreadyFinishedSession_returnsEmpty() throws Exception {
+        int sessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        assertTrue(gameSessionDao.abandon(sessionId, player1Id).isEmpty());
+    }
+
+    @Test
+    void currentTurnStartedAt_activeSessionWithTurnStartedAtSet_returnsIt() throws Exception {
+        int sessionId = insertActiveSessionWithTurnStartedAt(player1Id, player2Id, gameTypeId);
+
+        Optional<Instant> turnStartedAt = gameSessionDao.currentTurnStartedAt(sessionId);
+
+        assertTrue(turnStartedAt.isPresent());
+    }
+
+    @Test
+    void currentTurnStartedAt_unknownSession_returnsEmpty() {
+        assertTrue(gameSessionDao.currentTurnStartedAt(999999).isEmpty());
+    }
+
     private int insertActiveSession(int player1Id, int player2Id, int gameTypeId) throws Exception {
         String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID) "
                 + "VALUES (?, ?, ?, 'ACTIVE', ?)";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setInt(4, player1Id);
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    private int insertActiveSessionWithTurnStartedAt(int player1Id, int player2Id, int gameTypeId) throws Exception {
+        String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, "
+                + "TurnStartedAt) VALUES (?, ?, ?, 'ACTIVE', ?, NOW())";
         try (Connection conn = DATA_SOURCE.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setInt(1, gameTypeId);

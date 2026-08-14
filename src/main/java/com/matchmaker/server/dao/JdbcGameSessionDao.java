@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -104,6 +105,71 @@ public class JdbcGameSessionDao implements GameSessionDao {
             return findAnyById(conn, sessionId);
         } catch (SQLException e) {
             throw new DaoException("Failed to force-end session " + sessionId, e);
+        }
+    }
+
+    @Override
+    public Optional<GameStateDTO> abandon(int sessionId, Integer winnerUserId) {
+        String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW() "
+                + "WHERE ID = ? AND Status = 'ACTIVE'";
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                Optional<GameStateDTO> before = findAnyById(conn, sessionId);
+                if (before.isEmpty()) {
+                    conn.rollback();
+                    return Optional.empty();
+                }
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    if (winnerUserId != null) {
+                        stmt.setInt(1, winnerUserId);
+                    } else {
+                        stmt.setNull(1, Types.INTEGER);
+                    }
+                    stmt.setInt(2, sessionId);
+                    int rowsUpdated = stmt.executeUpdate();
+                    if (rowsUpdated == 0) {
+                        conn.rollback();
+                        return Optional.empty();
+                    }
+                }
+
+                if (winnerUserId != null) {
+                    GameStateDTO session = before.get();
+                    int loserUserId = session.getPlayer1Id() == winnerUserId
+                            ? session.getPlayer2Id() : session.getPlayer1Id();
+                    applyEloAndRecordResult(conn, winnerUserId, loserUserId);
+                }
+
+                Optional<GameStateDTO> after = findAnyById(conn, sessionId);
+                conn.commit();
+                return after;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw new DaoException("Failed to abandon session " + sessionId, e);
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to abandon session " + sessionId, e);
+        }
+    }
+
+    @Override
+    public Optional<Instant> currentTurnStartedAt(int sessionId) {
+        String sql = "SELECT TurnStartedAt FROM GameSession WHERE ID = ? AND Status = 'ACTIVE'";
+        try (Connection conn = dataSource.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, sessionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                Timestamp turnStartedAt = rs.getTimestamp("TurnStartedAt");
+                return turnStartedAt == null ? Optional.empty() : Optional.of(turnStartedAt.toInstant());
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to read TurnStartedAt for session " + sessionId, e);
         }
     }
 
