@@ -50,7 +50,6 @@ public class GameBoardController {
     @FXML private Label statusLabel;
     @FXML private Label turnTimerLabel;
     @FXML private GridPane boardGrid;
-    @FXML private Button submitButton;
     @FXML private Button clearButton;
     @FXML private Button backToLobbyButton;
 
@@ -59,6 +58,7 @@ public class GameBoardController {
     private GameStateDTO currentState;
     private final List<String> selectedPath = new ArrayList<>();
     private Set<String> highlightedSquares = Set.of();
+    private boolean highlightsLoading = false;
     private Timeline turnCountdown;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
@@ -71,6 +71,9 @@ public class GameBoardController {
     private void applyState(GameStateDTO state) {
         this.currentState = state;
         selectedPath.clear();
+        // A fresh, authoritative state has arrived -- any in-flight highlight/submit lock from
+        // before this point is moot now, whatever it was guarding against is already resolved.
+        highlightsLoading = false;
         updateColorIndicator();
         renderBoard(state);
         updateStatusLabel(state);
@@ -79,7 +82,6 @@ public class GameBoardController {
         // game exactly like FINISHED does from the board's point of view -- only a status of
         // ACTIVE means the game is actually still being played.
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
-        submitButton.setDisable(ended);
         clearButton.setDisable(ended);
         backToLobbyButton.setVisible(ended);
 
@@ -99,12 +101,27 @@ public class GameBoardController {
      *  highlights the resulting squares -- called at the start of a turn (selectedPath is empty
      *  at that point, so this highlights legal origins, already narrowed to capture-only pieces
      *  if a capture is mandatory) and again after every accepted click. Purely a UX aid: the
-     *  server's makeMove() remains the real authority on what's actually legal. */
+     *  server's makeMove() remains the real authority on what's actually legal.
+     *
+     *  <p>An empty result for a non-empty selectedPath means it can't be extended any further --
+     *  since every square in selectedPath was itself only ever accepted because a prior call here
+     *  said it was legal, that means selectedPath is now a complete, legal move, and it's
+     *  auto-submitted immediately rather than waiting for a separate "Submit" action. */
     private void refreshHighlights() {
+        highlightsLoading = true;
         JSONObject payload = new JSONObject();
         payload.put("path", new JSONArray(selectedPath));
         gameClientService.legalContinuations(currentState.getSessionId(), payload.toString(),
                 continuations -> {
+                    if (continuations.isEmpty() && selectedPath.size() >= 2) {
+                        // Deliberately leaving highlightsLoading == true here rather than
+                        // resetting it -- clicks need to stay locked out through the submit that's
+                        // about to happen too, not just through this query. It's cleared once a
+                        // fresh state actually arrives, in applyState().
+                        submitCurrentSelection();
+                        return;
+                    }
+                    highlightsLoading = false;
                     Set<String> next = new HashSet<>();
                     for (String continuationJson : continuations) {
                         JSONArray path = new JSONObject(continuationJson).getJSONArray("path");
@@ -115,7 +132,27 @@ public class GameBoardController {
                     highlightedSquares = next;
                     renderBoard(currentState);
                 },
-                error -> System.err.println("Failed to refresh legal-move highlights: " + error.getMessage()));
+                error -> {
+                    highlightsLoading = false;
+                    System.err.println("Failed to refresh legal-move highlights: " + error.getMessage());
+                });
+    }
+
+    private void submitCurrentSelection() {
+        JSONObject payload = new JSONObject();
+        payload.put("path", new JSONArray(selectedPath));
+        gameClientService.makeMove(currentState.getSessionId(), payload.toString(),
+                this::applyState,
+                error -> {
+                    // Unlike a manual submit, an auto-submit rejection almost certainly means
+                    // selectedPath was built against state that's since changed underneath it
+                    // (a race with the opponent's move) -- clearing and re-querying resyncs with
+                    // whatever's actually legal now, rather than leaving stale, no-longer-valid
+                    // picks on screen.
+                    selectedPath.clear();
+                    statusLabel.setText(friendlyMoveErrorMessage(error));
+                    refreshHighlights();
+                });
     }
 
     /** Purely a local display -- the server is authoritative on turn timeout (SessionWatchdog),
@@ -234,6 +271,14 @@ public class GameBoardController {
         if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn()) {
             return;
         }
+        // Locked out while a refresh is in flight -- otherwise a click landing in the gap
+        // between "selectedPath just grew" and "the new highlight set arrived" would still be
+        // checked against the stale, pre-click highlight set (which, right after selecting an
+        // origin, still legitimately contains that same origin square as a valid pick from
+        // before it was selected), letting the same square be added to the path twice.
+        if (highlightsLoading) {
+            return;
+        }
         // highlightedSquares is exactly "what the server says is legal to click right now" --
         // rejecting anything outside it here means an illegal pick is refused immediately
         // instead of being accepted into selectedPath and only punished on submit.
@@ -243,27 +288,6 @@ public class GameBoardController {
         selectedPath.add(algebraic);
         renderBoard(currentState);
         refreshHighlights();
-    }
-
-    @FXML
-    private void onSubmitMove() {
-        if (selectedPath.size() < 2) {
-            statusLabel.setText("Select an origin and at least one destination square first.");
-            return;
-        }
-        JSONObject payload = new JSONObject();
-        payload.put("path", new JSONArray(selectedPath));
-        submitButton.setDisable(true);
-
-        gameClientService.makeMove(currentState.getSessionId(), payload.toString(),
-                this::applyState,
-                error -> {
-                    // Deliberately not clearing selectedPath here -- a rejected move shouldn't
-                    // throw away what the player picked. They can adjust it (add/remove squares)
-                    // or hit "Clear Selection" themselves.
-                    submitButton.setDisable(false);
-                    statusLabel.setText(friendlyMoveErrorMessage(error));
-                });
     }
 
     private static String friendlyMoveErrorMessage(Throwable error) {

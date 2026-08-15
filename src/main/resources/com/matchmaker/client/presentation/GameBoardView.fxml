@@ -32,7 +32,6 @@
         <VBox spacing="8" alignment="CENTER">
             <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
             <HBox spacing="10" alignment="CENTER">
-                <Button fx:id="submitButton" text="Submit Move" onAction="#onSubmitMove"/>
                 <Button fx:id="clearButton" text="Clear Selection" onAction="#onClearSelection"/>
             </HBox>
             <Button fx:id="backToLobbyButton" text="Back to Lobby" onAction="#onBackToLobby" visible="false"/>
