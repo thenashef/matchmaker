@@ -10,9 +10,9 @@
 <BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.matchmaker.client.presentation.GameBoardController">
     <top>
-        <VBox spacing="6">
+        <VBox spacing="6" alignment="CENTER">
             <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
-            <HBox spacing="8" alignment="CENTER_LEFT">
+            <HBox spacing="8" alignment="CENTER">
                 <Circle fx:id="colorIndicator" radius="8" stroke="GRAY" strokeWidth="1"/>
                 <Label fx:id="colorLabel" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
             </HBox>
