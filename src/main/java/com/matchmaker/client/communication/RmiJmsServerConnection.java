@@ -121,6 +121,16 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     @Override
+    public List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
+            throws AuthenticationException, NotParticipantException, NotYourTurnException {
+        try {
+            return playerService.legalContinuations(sessionToken, gameSessionId, partialMovePayload);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("legalContinuations() failed", e);
+        }
+    }
+
+    @Override
     public Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener) {
         return subscribe(session -> session.createQueue("player." + userId + ".events"), listener);
     }

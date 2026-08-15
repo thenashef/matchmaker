@@ -9,12 +9,14 @@ import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.NotYourTurnException;
 import javafx.application.Platform;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -169,6 +171,28 @@ class GameClientServiceTest {
                 service.makeMove(5, "{\"path\":[\"b3\",\"b5\"]}", r -> fail("should not succeed"), capture));
 
         assertInstanceOf(IllegalMoveException.class, error);
+    }
+
+    @Test
+    void legalContinuations_success_reachesOnSuccessWithWhatConnectionReturns() throws Exception {
+        loginAsUser(1);
+        serverConnection.setLegalContinuationsResult(List.of("{\"path\":[\"b6\"]}", "{\"path\":[\"c5\"]}"));
+
+        List<String> result = await(capture ->
+                service.legalContinuations(5, "{\"path\":[]}", capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(List.of("{\"path\":[\"b6\"]}", "{\"path\":[\"c5\"]}"), result);
+    }
+
+    @Test
+    void legalContinuations_failure_invokesOnError() throws Exception {
+        loginAsUser(1);
+        serverConnection.setLegalContinuationsFailure(new NotYourTurnException("not your turn"));
+
+        Throwable error = await(capture -> service.legalContinuations(
+                5, "{\"path\":[]}", r -> fail("should not succeed"), capture));
+
+        assertInstanceOf(NotYourTurnException.class, error);
     }
 
     @Test

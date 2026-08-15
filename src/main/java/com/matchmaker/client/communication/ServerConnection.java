@@ -29,6 +29,9 @@ public interface ServerConnection {
     GameStateDTO makeMove(String sessionToken, int gameSessionId, String movePayload)
             throws AuthenticationException, NotParticipantException, NotYourTurnException, IllegalMoveException;
 
+    List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
+            throws AuthenticationException, NotParticipantException, NotYourTurnException;
+
     Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener);
 
     Subscription subscribeToSessionTopic(int sessionId, ServerEventListener listener);

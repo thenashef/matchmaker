@@ -104,6 +104,12 @@ public class GameClientService {
                 onError);
     }
 
+    public void legalContinuations(int gameSessionId, String partialMovePayload,
+                                    Consumer<List<String>> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.legalContinuations(sessionToken, gameSessionId, partialMovePayload),
+                onSuccess, onError);
+    }
+
     /** Registers for live session-topic pushes and returns whatever the latest known state is,
      *  so the caller (GameBoardController) can render immediately even if it attaches slightly
      *  after enterGame() already subscribed -- nothing published in that gap is missed. */

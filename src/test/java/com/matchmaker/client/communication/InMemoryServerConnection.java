@@ -7,6 +7,7 @@ import com.matchmaker.common.dto.LoginResultDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
 
 import java.util.ArrayList;
@@ -29,6 +30,8 @@ public class InMemoryServerConnection implements ServerConnection {
     private boolean cancelQueueCalled = false;
     private GameStateDTO makeMoveResult;
     private IllegalMoveException makeMoveFailure;
+    private List<String> legalContinuationsResult = new ArrayList<>();
+    private NotYourTurnException legalContinuationsFailure;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
     private volatile String lastKeepAliveToken;
 
@@ -44,6 +47,8 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setJoinQueueResult(GameStateDTO result) { this.joinQueueResult = result; }
     public void setMakeMoveResult(GameStateDTO result) { this.makeMoveResult = result; }
     public void setMakeMoveFailure(IllegalMoveException failure) { this.makeMoveFailure = failure; }
+    public void setLegalContinuationsResult(List<String> result) { this.legalContinuationsResult = result; }
+    public void setLegalContinuationsFailure(NotYourTurnException failure) { this.legalContinuationsFailure = failure; }
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
     public List<MakeMoveCall> makeMoveCalls() { return makeMoveCalls; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
@@ -87,6 +92,13 @@ public class InMemoryServerConnection implements ServerConnection {
         makeMoveCalls.add(new MakeMoveCall(sessionToken, gameSessionId, movePayload));
         if (makeMoveFailure != null) throw makeMoveFailure;
         return makeMoveResult;
+    }
+
+    @Override
+    public List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
+            throws NotYourTurnException {
+        if (legalContinuationsFailure != null) throw legalContinuationsFailure;
+        return legalContinuationsResult;
     }
 
     @Override
