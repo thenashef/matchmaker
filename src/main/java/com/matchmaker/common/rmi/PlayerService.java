@@ -39,6 +39,16 @@ public interface PlayerService extends Remote {
     GameStateDTO makeMove(String sessionToken, int gameSessionId, String movePayload)
         throws RemoteException, AuthenticationException, NotParticipantException, NotYourTurnException, IllegalMoveException;
 
+    /**
+     * Given a partial move (possibly {@code {"path":[]}} for "nothing picked yet"), returns
+     * every legal way to extend it by exactly one more step, each as a full move-payload JSON
+     * string in the same shape {@code movePayload} already has -- read-only, doesn't touch
+     * game state. An empty result means the given partial move is already complete (or the
+     * session has no legal moves left from here).
+     */
+    List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
+        throws RemoteException, AuthenticationException, NotParticipantException, NotYourTurnException;
+
     void sendChatMessage(String sessionToken, int gameSessionId, String content)
         throws RemoteException, AuthenticationException, NotParticipantException;
 

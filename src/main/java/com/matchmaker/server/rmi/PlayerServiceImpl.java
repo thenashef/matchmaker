@@ -167,6 +167,27 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     }
 
     @Override
+    public List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
+            throws RemoteException, AuthenticationException, NotParticipantException, NotYourTurnException {
+        int userId = sessionManager.resolve(sessionToken);
+
+        GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
+                .orElseThrow(() -> new NotParticipantException("No active game session " + gameSessionId));
+
+        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
+            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
+        }
+        if (session.getCurrentTurnUserId() == null || session.getCurrentTurnUserId() != userId) {
+            throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
+        }
+
+        String currentBoardState = session.getBoardState() != null
+                ? session.getBoardState() : gameEngine.initialState();
+        boolean isPlayer1Turn = session.getPlayer1Id() == userId;
+        return gameEngine.legalContinuations(currentBoardState, isPlayer1Turn, partialMovePayload);
+    }
+
+    @Override
     public void sendChatMessage(String sessionToken, int gameSessionId, String content)
             throws RemoteException, AuthenticationException, NotParticipantException {
         throw new UnsupportedOperationException("sendChatMessage not implemented yet -- see build-plan.md step 6");

@@ -278,4 +278,47 @@ class PlayerServiceImplTest {
             UnicastRemoteObject.unexportObject(playerServiceWithFailingPublisher, true);
         }
     }
+
+    @Test
+    void legalContinuations_activeSession_delegatesToTheEngine() throws Exception {
+        String initialBoard = new CheckersEngine().initialState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
+
+        List<String> result = playerService.legalContinuations(sessionToken, 1, "{\"path\":[]}");
+
+        assertTrue(result.contains("{\"path\":[\"b3\"]}"));
+    }
+
+    @Test
+    void legalContinuations_freshlyMatchedSessionWithNullBoardState_fallsBackToInitialBoardState() throws Exception {
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, null));
+
+        List<String> result = playerService.legalContinuations(sessionToken, 1, "{\"path\":[]}");
+
+        assertTrue(result.contains("{\"path\":[\"b3\"]}"));
+    }
+
+    @Test
+    void legalContinuations_notAParticipant_throwsNotParticipantException() throws Exception {
+        String initialBoard = new CheckersEngine().initialState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 2, 3, GameStatus.ACTIVE, 2, null, initialBoard));
+
+        assertThrows(NotParticipantException.class,
+                () -> playerService.legalContinuations(sessionToken, 1, "{\"path\":[]}"));
+    }
+
+    @Test
+    void legalContinuations_notYourTurn_throwsNotYourTurnException() throws Exception {
+        String initialBoard = new CheckersEngine().initialState();
+        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 2, null, initialBoard));
+
+        assertThrows(NotYourTurnException.class,
+                () -> playerService.legalContinuations(sessionToken, 1, "{\"path\":[]}"));
+    }
+
+    @Test
+    void legalContinuations_unknownSession_throwsNotParticipantException() {
+        assertThrows(NotParticipantException.class,
+                () -> playerService.legalContinuations(sessionToken, 999, "{\"path\":[]}"));
+    }
 }
