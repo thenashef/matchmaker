@@ -27,4 +27,14 @@ public class Move {
         }
         return new Move(path);
     }
+
+    public String toJson() {
+        JSONArray pathArray = new JSONArray();
+        for (Square square : path) {
+            pathArray.put(square.toAlgebraic());
+        }
+        JSONObject obj = new JSONObject();
+        obj.put("path", pathArray);
+        return obj.toString();
+    }
 }

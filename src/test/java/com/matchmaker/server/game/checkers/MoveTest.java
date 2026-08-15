@@ -23,4 +23,20 @@ class MoveTest {
                 List.of(new Square(5, 1), new Square(3, 3), new Square(1, 5)),
                 move.getPath());
     }
+
+    @Test
+    void toJson_thenFromJson_roundTrips() {
+        Move original = new Move(List.of(new Square(5, 1), new Square(3, 3), new Square(1, 5)));
+
+        Move roundTripped = Move.fromJson(original.toJson());
+
+        assertEquals(original.getPath(), roundTripped.getPath());
+    }
+
+    @Test
+    void toJson_emptyPath_producesAnEmptyPathArray() {
+        Move empty = new Move(List.of());
+
+        assertEquals(List.of(), Move.fromJson(empty.toJson()).getPath());
+    }
 }

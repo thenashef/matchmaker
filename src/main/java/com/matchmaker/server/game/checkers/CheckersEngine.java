@@ -4,7 +4,9 @@ import com.matchmaker.server.game.GameEngine;
 import com.matchmaker.server.game.GameResult;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class CheckersEngine implements GameEngine {
 
@@ -32,6 +34,32 @@ public class CheckersEngine implements GameEngine {
             }
         }
         return false;
+    }
+
+    @Override
+    public List<String> legalContinuations(String stateJson, boolean isPlayer1Turn, String partialMovePayloadJson) {
+        List<Square> pathSoFar;
+        try {
+            pathSoFar = Move.fromJson(partialMovePayloadJson).getPath();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+        CheckersBoard board = CheckersBoard.fromJson(stateJson);
+        // A multi-jump chain can have several full-length legal moves sharing the same prefix
+        // one step past pathSoFar before diverging further -- without deduping on the extended
+        // prefix itself, the same next square would appear once per such move.
+        Set<List<Square>> seen = new LinkedHashSet<>();
+        List<String> continuations = new ArrayList<>();
+        for (Move legal : legalMoves(board, isPlayer1Turn)) {
+            List<Square> path = legal.getPath();
+            if (path.size() > pathSoFar.size() && path.subList(0, pathSoFar.size()).equals(pathSoFar)) {
+                List<Square> extended = path.subList(0, pathSoFar.size() + 1);
+                if (seen.add(extended)) {
+                    continuations.add(new Move(extended).toJson());
+                }
+            }
+        }
+        return continuations;
     }
 
     private List<Move> legalMoves(CheckersBoard board, boolean isPlayer1Turn) {

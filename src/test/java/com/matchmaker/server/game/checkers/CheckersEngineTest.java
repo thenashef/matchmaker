@@ -4,6 +4,8 @@ import com.matchmaker.server.game.GameResult;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -169,6 +171,55 @@ class CheckersEngineTest {
 
         assertTrue(engine.isLegalMove(board, true, stopsAtPromotion));
         assertFalse(engine.isLegalMove(board, true, triesToContinuePastPromotion));
+    }
+
+    @Test
+    void legalContinuations_emptyPath_returnsTheOnlyPiecesOrigin() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+
+        List<String> continuations = engine.legalContinuations(board, true, "{\"path\":[]}");
+
+        assertEquals(List.of("{\"path\":[\"b3\"]}"), continuations);
+    }
+
+    @Test
+    void legalContinuations_mandatoryCapture_onlyCaptureCapableOriginsAreReturned() {
+        // Same fixture as isLegalMove_captureIsMandatory_appliesAcrossAllOfThePlayersPieces --
+        // b3 can capture c4, f3 cannot capture anything, so only b3 should come back.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"f3\":\"b\"}}";
+
+        List<String> continuations = engine.legalContinuations(board, true, "{\"path\":[]}");
+
+        assertEquals(List.of("{\"path\":[\"b3\"]}"), continuations);
+    }
+
+    @Test
+    void legalContinuations_midMultiJumpChain_returnsTheNextForcedJumpSquare() {
+        // Same fixture as isLegalMove_multiJumpChain_isLegalAsOnePath -- after the first jump
+        // (b3 -> d5), the chain must continue to f7.
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\",\"c4\":\"w\",\"e6\":\"w\"}}";
+
+        List<String> continuations = engine.legalContinuations(board, true, "{\"path\":[\"b3\",\"d5\"]}");
+
+        assertEquals(List.of("{\"path\":[\"b3\",\"d5\",\"f7\"]}"), continuations);
+    }
+
+    @Test
+    void legalContinuations_alreadyCompleteMove_returnsEmpty() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+
+        List<String> continuations = engine.legalContinuations(board, true, "{\"path\":[\"b3\",\"a4\"]}");
+
+        assertTrue(continuations.isEmpty());
+    }
+
+    @Test
+    void legalContinuations_malformedPartialMove_returnsEmptyRatherThanThrowing() {
+        String board = "{\"rows\":8,\"cols\":8,\"pieces\":{\"b3\":\"b\"}}";
+
+        List<String> continuations = engine.legalContinuations(board, true, "not json");
+
+        assertTrue(continuations.isEmpty());
     }
 
     @Test
