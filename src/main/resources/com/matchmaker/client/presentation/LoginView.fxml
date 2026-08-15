@@ -12,7 +12,7 @@
     <TextField fx:id="usernameField" promptText="Username" maxWidth="240"/>
     <PasswordField fx:id="passwordField" promptText="Password" maxWidth="240"/>
     <HBox spacing="10" alignment="CENTER">
-        <Button fx:id="loginButton" text="Login" onAction="#onLogin"/>
+        <Button fx:id="loginButton" text="Login" onAction="#onLogin" defaultButton="true"/>
         <Button fx:id="registerButton" text="Register" onAction="#onRegister"/>
     </HBox>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="280"/>

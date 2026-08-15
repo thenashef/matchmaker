@@ -3,6 +3,9 @@ package com.matchmaker.client.presentation;
 import com.matchmaker.client.logic.GameClientService;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.NotParticipantException;
+import com.matchmaker.common.exceptions.NotYourTurnException;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.fxml.FXML;
@@ -216,11 +219,25 @@ public class GameBoardController {
         gameClientService.makeMove(currentState.getSessionId(), payload.toString(),
                 this::applyState,
                 error -> {
+                    // Deliberately not clearing selectedPath here -- a rejected move shouldn't
+                    // throw away what the player picked. They can adjust it (add/remove squares)
+                    // or hit "Clear Selection" themselves.
                     submitButton.setDisable(false);
-                    selectedPath.clear();
-                    renderBoard(currentState);
-                    statusLabel.setText(error.getMessage());
+                    statusLabel.setText(friendlyMoveErrorMessage(error));
                 });
+    }
+
+    private static String friendlyMoveErrorMessage(Throwable error) {
+        if (error instanceof IllegalMoveException) {
+            return "That move isn't legal -- try a different one.";
+        }
+        if (error instanceof NotYourTurnException) {
+            return "It's not your turn.";
+        }
+        if (error instanceof NotParticipantException) {
+            return "You're not a participant in this game.";
+        }
+        return "Move failed -- please try again.";
     }
 
     @FXML
