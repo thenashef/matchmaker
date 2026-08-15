@@ -21,7 +21,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class GameBoardController {
 
@@ -56,6 +58,7 @@ public class GameBoardController {
     private SceneNavigator navigator;
     private GameStateDTO currentState;
     private final List<String> selectedPath = new ArrayList<>();
+    private Set<String> highlightedSquares = Set.of();
     private Timeline turnCountdown;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
@@ -85,9 +88,34 @@ public class GameBoardController {
                 TURN_SOUND.play();
             }
             startTurnCountdown();
+            refreshHighlights();
         } else {
             stopTurnCountdown();
+            highlightedSquares = Set.of();
         }
+    }
+
+    /** Queries the server for every legal way to extend selectedPath by one more step, and
+     *  highlights the resulting squares -- called at the start of a turn (selectedPath is empty
+     *  at that point, so this highlights legal origins, already narrowed to capture-only pieces
+     *  if a capture is mandatory) and again after every accepted click. Purely a UX aid: the
+     *  server's makeMove() remains the real authority on what's actually legal. */
+    private void refreshHighlights() {
+        JSONObject payload = new JSONObject();
+        payload.put("path", new JSONArray(selectedPath));
+        gameClientService.legalContinuations(currentState.getSessionId(), payload.toString(),
+                continuations -> {
+                    Set<String> next = new HashSet<>();
+                    for (String continuationJson : continuations) {
+                        JSONArray path = new JSONObject(continuationJson).getJSONArray("path");
+                        if (path.length() > 0) {
+                            next.add(path.getString(path.length() - 1));
+                        }
+                    }
+                    highlightedSquares = next;
+                    renderBoard(currentState);
+                },
+                error -> System.err.println("Failed to refresh legal-move highlights: " + error.getMessage()));
     }
 
     /** Purely a local display -- the server is authoritative on turn timeout (SessionWatchdog),
@@ -176,7 +204,14 @@ public class GameBoardController {
         cell.setPrefSize(60, 60);
 
         String backgroundColor = dark ? "#5c4033" : "#e8d5b7";
-        String borderStyle = selectedPath.contains(algebraic) ? "-fx-border-color: gold; -fx-border-width: 3;" : "";
+        String borderStyle;
+        if (selectedPath.contains(algebraic)) {
+            borderStyle = "-fx-border-color: gold; -fx-border-width: 3;";
+        } else if (highlightedSquares.contains(algebraic)) {
+            borderStyle = "-fx-border-color: #4caf50; -fx-border-width: 3;";
+        } else {
+            borderStyle = "";
+        }
         cell.setStyle("-fx-background-color: " + backgroundColor + "; " + borderStyle);
 
         if (dark && pieces.has(algebraic)) {
@@ -199,11 +234,15 @@ public class GameBoardController {
         if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn()) {
             return;
         }
-        if (selectedPath.isEmpty() && !isOwnPiece(algebraic)) {
+        // highlightedSquares is exactly "what the server says is legal to click right now" --
+        // rejecting anything outside it here means an illegal pick is refused immediately
+        // instead of being accepted into selectedPath and only punished on submit.
+        if (!highlightedSquares.contains(algebraic)) {
             return;
         }
         selectedPath.add(algebraic);
         renderBoard(currentState);
+        refreshHighlights();
     }
 
     @FXML
@@ -244,6 +283,7 @@ public class GameBoardController {
     private void onClearSelection() {
         selectedPath.clear();
         renderBoard(currentState);
+        refreshHighlights();
     }
 
     @FXML
@@ -258,17 +298,6 @@ public class GameBoardController {
     private boolean isMyTurn() {
         Integer turnUserId = currentState.getCurrentTurnUserId();
         return turnUserId != null && turnUserId == gameClientService.getCurrentUser().getId();
-    }
-
-    private boolean isOwnPiece(String algebraic) {
-        JSONObject board = new JSONObject(currentState.getBoardState());
-        JSONObject pieces = board.getJSONObject("pieces");
-        if (!pieces.has(algebraic)) {
-            return false;
-        }
-        char piece = pieces.getString(algebraic).charAt(0);
-        boolean pieceIsPlayer1 = Character.toLowerCase(piece) == 'b';
-        return isPlayer1() == pieceIsPlayer1;
     }
 
     private boolean isPlayer1() {
