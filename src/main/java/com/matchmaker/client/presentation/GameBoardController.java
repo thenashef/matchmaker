@@ -50,7 +50,6 @@ public class GameBoardController {
     @FXML private Label statusLabel;
     @FXML private Label turnTimerLabel;
     @FXML private GridPane boardGrid;
-    @FXML private Button clearButton;
     @FXML private Button backToLobbyButton;
 
     private GameClientService gameClientService;
@@ -82,7 +81,6 @@ public class GameBoardController {
         // game exactly like FINISHED does from the board's point of view -- only a status of
         // ACTIVE means the game is actually still being played.
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
-        clearButton.setDisable(ended);
         backToLobbyButton.setVisible(ended);
 
         if (isMyTurn() && !ended) {
@@ -280,9 +278,15 @@ public class GameBoardController {
             return;
         }
         // highlightedSquares is exactly "what the server says is legal to click right now" --
-        // rejecting anything outside it here means an illegal pick is refused immediately
-        // instead of being accepted into selectedPath and only punished on submit.
+        // a click outside it isn't a legal continuation, so it resets the in-progress selection
+        // back to the start of the turn instead of being silently ignored or requiring a
+        // separate "Clear Selection" action.
         if (!highlightedSquares.contains(algebraic)) {
+            if (!selectedPath.isEmpty()) {
+                selectedPath.clear();
+                renderBoard(currentState);
+                refreshHighlights();
+            }
             return;
         }
         selectedPath.add(algebraic);
@@ -301,13 +305,6 @@ public class GameBoardController {
             return "You're not a participant in this game.";
         }
         return "Move failed -- please try again.";
-    }
-
-    @FXML
-    private void onClearSelection() {
-        selectedPath.clear();
-        renderBoard(currentState);
-        refreshHighlights();
     }
 
     @FXML
