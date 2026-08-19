@@ -13,6 +13,7 @@ import com.matchmaker.server.jms.ActiveMqGameEventPublisher;
 import com.matchmaker.server.jms.EmbeddedJmsBroker;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsConnectionFactory;
+import com.matchmaker.server.jms.JmsSecurityPlugin;
 import com.matchmaker.server.matchmaking.JdbcMatchmakingQueue;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import com.matchmaker.server.rmi.AdminServiceImpl;
@@ -28,6 +29,7 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.time.Duration;
+import java.util.UUID;
 
 public class ServerMain {
 
@@ -70,8 +72,14 @@ public class ServerMain {
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
         MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
 
-        BrokerService jmsBroker = EmbeddedJmsBroker.start(jmsPort);
-        Connection jmsConnection = JmsConnectionFactory.createForBroker("tcp://localhost:" + jmsPort);
+        String jmsServiceUsername = "matchmaker-service";
+        String jmsServicePassword = UUID.randomUUID().toString();
+        JmsSecurityPlugin jmsSecurityPlugin = new JmsSecurityPlugin(
+                sessionManager, userDao, gameSessionDao, jmsServiceUsername, jmsServicePassword);
+
+        BrokerService jmsBroker = EmbeddedJmsBroker.start(jmsPort, jmsSecurityPlugin);
+        Connection jmsConnection = JmsConnectionFactory.createForBroker(
+                "tcp://localhost:" + jmsPort, jmsServiceUsername, jmsServicePassword);
         Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
         GameEngine gameEngine = new CheckersEngine();

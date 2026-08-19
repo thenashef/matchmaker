@@ -30,10 +30,14 @@ public class RmiJmsServerConnection implements ServerConnection {
 
     private final AuthService authService;
     private final PlayerService playerService;
-    private final Connection jmsConnection;
-    private final Session jmsSession;
+    private final String host;
+    private final int jmsPort;
+    private Connection jmsConnection;
+    private Session jmsSession;
 
     public RmiJmsServerConnection(String host, int rmiPort, int jmsPort) {
+        this.host = host;
+        this.jmsPort = jmsPort;
         try {
             Registry registry = LocateRegistry.getRegistry(host, rmiPort);
             authService = (AuthService) registry.lookup("AuthService");
@@ -41,14 +45,19 @@ public class RmiJmsServerConnection implements ServerConnection {
         } catch (RemoteException | NotBoundException e) {
             throw new ServerCommunicationException("Failed to connect to RMI registry at " + host + ":" + rmiPort, e);
         }
+    }
 
+    // The broker requires an authenticated connection (see JmsSecurityPlugin), so the JMS
+    // connection can't be opened until we have a session token to authenticate with -- it's
+    // deferred here and opened right after a successful login, rather than in the constructor.
+    private void connectJms(int userId, String sessionToken) {
         try {
             // Deliberately not reusing server.jms.JmsConnectionFactory -- client code never
             // imports from com.matchmaker.server.* (see the implementation plan's Global
             // Constraints), so the handful of lines it would have saved are duplicated instead.
             ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + jmsPort);
             factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
-            jmsConnection = factory.createConnection();
+            jmsConnection = factory.createConnection(String.valueOf(userId), sessionToken);
             jmsConnection.start();
             jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         } catch (JMSException e) {
@@ -67,11 +76,14 @@ public class RmiJmsServerConnection implements ServerConnection {
 
     @Override
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
+        LoginResultDTO result;
         try {
-            return authService.login(username, password);
+            result = authService.login(username, password);
         } catch (RemoteException e) {
             throw new ServerCommunicationException("login() failed", e);
         }
+        connectJms(result.getUser().getId(), result.getSessionToken());
+        return result;
     }
 
     @Override
@@ -141,6 +153,9 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     public void close() {
+        if (jmsConnection == null) {
+            return;
+        }
         try {
             jmsConnection.close();
         } catch (JMSException e) {

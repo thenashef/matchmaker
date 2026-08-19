@@ -21,4 +21,13 @@ public class JmsConnectionFactory {
         connection.start();
         return connection;
     }
+
+    public static Connection createForBroker(String brokerUrl, String username, String password) throws JMSException {
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(brokerUrl);
+        factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
+
+        Connection connection = factory.createConnection(username, password);
+        connection.start();
+        return connection;
+    }
 }
