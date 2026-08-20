@@ -31,8 +31,6 @@ class AdminClientServiceTest {
 
     @BeforeAll
     static void initJavaFxRuntime() throws InterruptedException {
-        // Same one-time toolkit-warmup cost/fix as GameClientServiceTest -- see that class for
-        // the full explanation.
         CountDownLatch warmupLatch = new CountDownLatch(1);
         try {
             Platform.startup(warmupLatch::countDown);

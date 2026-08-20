@@ -70,14 +70,11 @@ class SessionManagerTest {
         Thread.sleep(40);
 
         assertThrows(AuthenticationException.class, () -> sessionManager.resolve(token));
-        // ...and it is gone, not merely rejected -- so a token nobody uses can't accumulate.
         assertEquals(0, sessionManager.evictExpired(), "resolve() should have evicted it already");
     }
 
     @Test
     void resolve_keepsRefreshingTheTtlWhileTheClientIsActive() throws Exception {
-        // The TTL is sliding, which is what makes a 30-minute default safe to pair with a 15s
-        // keep-alive: a client that keeps pinging never expires, however long it stays connected.
         SessionManager sessionManager = new SessionManager(Duration.ofMillis(60));
         String token = sessionManager.createSession(42);
 

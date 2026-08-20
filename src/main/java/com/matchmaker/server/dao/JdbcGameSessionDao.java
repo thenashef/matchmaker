@@ -91,9 +91,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
 
     @Override
     public Optional<GameStateDTO> forceEnd(int sessionId) {
-        // Mirrors recordMove()'s guarded-UPDATE pattern: WHERE ... AND Status = 'ACTIVE' means a
-        // session that already ended naturally (a player won) in the gap before this call commits
-        // just yields 0 rows updated -- treated as "nothing to force-end," not an error.
         String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = NULL, EndTime = NOW() "
                 + "WHERE ID = ? AND Status = 'ACTIVE'";
         try (Connection conn = dataSource.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -110,9 +107,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
 
     @Override
     public Optional<GameStateDTO> abandon(int sessionId, Integer winnerUserId) {
-        // CurrentTurnUserID must be cleared, same as a normal FINISHED game -- otherwise the
-        // last GameStateDTO a client sees still names them as the turn holder, and
-        // GameBoardController would (incorrectly) keep treating the game as still in progress.
         String sql = "UPDATE GameSession SET Status = 'ABANDONED', WinnerID = ?, EndTime = NOW(), "
                 + "CurrentTurnUserID = NULL WHERE ID = ? AND Status = 'ACTIVE'";
         try (Connection conn = dataSource.getConnection()) {
@@ -157,10 +151,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 conn.rollback();
                 throw e;
             } catch (SQLException | RuntimeException e) {
-                // Catching RuntimeException too, not just SQLException -- an unexpected failure
-                // partway through (e.g. GameStatus.valueOf() on a surprising row) must still roll
-                // back rather than fall straight to the finally block's setAutoCommit(true), which
-                // per the JDBC spec would otherwise commit whatever was left in flight.
                 conn.rollback();
                 throw new DaoException("Failed to abandon session " + sessionId, e);
             } finally {
@@ -219,11 +209,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 }
 
                 boolean gameEnded = updatedSession.getStatus() == GameStatus.FINISHED;
-                // The WHERE clause ties this write back to the exact pre-move state the caller
-                // validated against (movingUserId can only be legal here if it still equals
-                // CurrentTurnUserID, and the session must still be ACTIVE) -- this is what
-                // makes concurrent calls for the same session safe: only the first to commit
-                // wins, and a loser gets 0 rows affected instead of silently clobbering it.
                 try (PreparedStatement updateSession = conn.prepareStatement(
                         "UPDATE GameSession SET BoardState = ?, CurrentTurnUserID = ?, TurnStartedAt = NOW(), "
                                 + "Status = ?, WinnerID = ?, EndTime = ? "
@@ -257,13 +242,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 }
 
                 if (gameEnded) {
-                    // A finished game does not necessarily have a winner: GameResult.DRAW makes
-                    // PlayerServiceImpl.makeMove() build exactly this state, FINISHED with a null
-                    // winner. Unboxing it into an int threw a NullPointerException that the
-                    // SQLException-only catch below didn't cover, so it escaped straight past
-                    // the finally -- where setAutoCommit(true) commits whatever is in flight per
-                    // the JDBC spec. The move row and the FINISHED status committed; the ratings
-                    // never did; and the caller got an NPE instead of a result.
                     Integer winnerId = updatedSession.getWinnerId();
                     if (winnerId == null) {
                         applyDrawResult(conn, updatedSession.getPlayer1Id(), updatedSession.getPlayer2Id());
@@ -277,15 +255,8 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 conn.commit();
                 return updatedSession;
             } catch (ConcurrentGameUpdateException e) {
-                // Deliberately ahead of the catch below, which would otherwise swallow this into
-                // a DaoException and cost makeMove() its translation to NotYourTurnException.
-                // It is an expected race outcome, not a failure, and it already rolled back at
-                // its throw site -- so it passes straight through untouched.
                 throw e;
             } catch (SQLException | RuntimeException e) {
-                // RuntimeException as well as SQLException, for the reason spelled out in
-                // abandon() below: without it an unexpected failure part-way through skips the
-                // rollback and reaches the finally, which commits the half-written transaction.
                 conn.rollback();
                 throw new DaoException("Failed to record move for session " + updatedSession.getSessionId(), e);
             } finally {
@@ -330,11 +301,6 @@ public class JdbcGameSessionDao implements GameSessionDao {
         }
     }
 
-    /**
-     * The drawn-game counterpart to {@link #applyEloAndRecordResult}: both players score 0.5
-     * rather than 1/0, which moves the lower-rated player up and the higher-rated one down by
-     * the same amount, and both get a Draw rather than a Win and a Loss.
-     */
     private void applyDrawResult(Connection conn, int player1Id, int player2Id) throws SQLException {
         int player1Rating = ratingOf(conn, player1Id);
         int player2Rating = ratingOf(conn, player2Id);

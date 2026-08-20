@@ -92,9 +92,6 @@ class AuthServiceImplTest {
 
     @Test
     void register_usernameLongerThanTheColumn_throwsInvalidRegistrationNotASqlError() {
-        // 51 characters against a VARCHAR(50). This used to reach the INSERT as-is and come back
-        // as a DaoException-wrapped SQLException, surfacing in the login screen as a raw RMI
-        // ServerException rather than something a person could act on.
         String tooLong = "a".repeat(51);
 
         InvalidRegistrationException thrown = assertThrows(InvalidRegistrationException.class,
@@ -116,8 +113,6 @@ class AuthServiceImplTest {
 
     @Test
     void register_passwordBeyondWhatBcryptHashes_throwsInvalidRegistration() {
-        // jbcrypt silently ignores everything past 72 bytes, so accepting a longer one would
-        // quietly authenticate anybody who knew only the first 72.
         assertThrows(InvalidRegistrationException.class,
                 () -> authService.register("alice", "x".repeat(73)));
     }
@@ -140,7 +135,6 @@ class AuthServiceImplTest {
 
     @Test
     void logout_unknownToken_doesNotThrow() {
-        // Called from client shutdown, where an already-expired token is the expected case.
         assertDoesNotThrow(() -> authService.logout("never-issued"));
     }
 }

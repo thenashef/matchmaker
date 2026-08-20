@@ -58,12 +58,6 @@ public class LoginController {
                 });
     }
 
-    /**
-     * The server validates registration itself, so an over-long username no longer reaches the
-     * VARCHAR(50) column and come back as a wrapped SQLException -- which is what used to put a
-     * raw RMI ServerException in this label. Both expected failures carry a message written for
-     * a person; anything else gets a generic line rather than a stack trace's toString().
-     */
     private static String friendlyRegisterErrorMessage(Throwable error) {
         if (error instanceof InvalidRegistrationException || error instanceof UsernameTakenException) {
             return error.getMessage();

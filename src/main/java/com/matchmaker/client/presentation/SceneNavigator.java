@@ -9,10 +9,6 @@ import java.io.IOException;
 
 public class SceneNavigator {
 
-    // One fixed window size for every screen, set once here rather than letting each screen's
-    // own preferred size resize the Stage on every navigation -- sized to comfortably fit the
-    // largest screen (Game Board: a 480x480 board plus its header/footer controls) so nothing
-    // in any screen ever gets clipped, and switching screens never changes the window's size.
     private static final double WINDOW_WIDTH = 560;
     private static final double WINDOW_HEIGHT = 700;
 

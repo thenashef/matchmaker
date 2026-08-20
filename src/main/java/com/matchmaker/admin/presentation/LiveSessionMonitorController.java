@@ -19,7 +19,6 @@ public class LiveSessionMonitorController {
 
     private static final int BOARD_SIZE = 8;
     private static final int CELL_SIZE = 50;
-    /** Last-resort stand-in for a session row written before board state was set at creation. */
     private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
 
     @FXML private Label titleLabel;
@@ -36,8 +35,6 @@ public class LiveSessionMonitorController {
         this.adminClientService = adminClientService;
         this.navigator = navigator;
 
-        // Subscribe before anything else -- a JMS Topic gives no retention to a late subscriber,
-        // same rule the player client's GameClientService.enterGame() follows.
         adminClientService.monitorSession(initialState.getSessionId(), this::onEvent);
         applyState(initialState);
     }
@@ -62,10 +59,6 @@ public class LiveSessionMonitorController {
 
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
-        // See the identical guard in the player client's GameBoardController: sessions carry a
-        // real board from creation now, so this only covers rows written before that change --
-        // but clicking Monitor on one used to throw straight out of init() and leave the screen
-        // half-drawn, which is a poor trade for one defensive check.
         JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
         JSONObject pieces = board.getJSONObject("pieces");
 
@@ -93,7 +86,6 @@ public class LiveSessionMonitorController {
             disc.setStrokeWidth(king ? 3 : 1);
             cell.getChildren().add(disc);
         }
-        // Read-only -- no click handler on any cell, admin never sends a move.
         return cell;
     }
 

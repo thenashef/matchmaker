@@ -11,10 +11,6 @@ class MatchmakerExceptionHierarchyTest {
         MatchmakerException ex = new MatchmakerException("base");
         assertEquals("base", ex.getMessage());
         assertTrue(ex instanceof Exception);
-        // Note: MatchmakerException extends Exception (checked), not RuntimeException.
-        // That's enforced at compile time by the class declaration itself -- an
-        // `instanceof RuntimeException` check here wouldn't even compile, since the
-        // two types are unrelated, so there's nothing further to assert at runtime.
     }
 
     @Test

@@ -32,9 +32,6 @@ class MatchmakingQueueTest {
 
     private static final DataSource DATA_SOURCE = DataSourceFactory.create();
 
-    // Stands in for whatever GameEngine.initialState() the caller would pass. The queue is
-    // game-agnostic and never parses this -- it only has to store it -- so a recognisable
-    // sentinel makes it obvious in assertions that the value round-tripped unchanged.
     private static final String INITIAL_BOARD = "{\"rows\":8,\"cols\":8,\"pieces\":{\"a1\":\"b\"}}";
 
     private final MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(DATA_SOURCE);
@@ -75,10 +72,6 @@ class MatchmakingQueueTest {
         assertNull(result.getWinnerId());
         assertEquals(0, countQueueRows());
 
-        // Regression check: JdbcMatchmakingQueue and JdbcGameSessionDao must agree on how
-        // TurnStartedAt is written/read, or SessionWatchdog's turn-timeout check can fire
-        // immediately (or never) on a DB/JVM timezone mismatch -- see currentTurnStartedAt()'s
-        // own test for the read-side half of this same guard.
         Optional<Instant> turnStartedAt = gameSessionDao.currentTurnStartedAt(result.getSessionId());
         assertTrue(turnStartedAt.isPresent());
         assertTrue(Duration.between(turnStartedAt.get(), Instant.now()).abs().toSeconds() < 60,
@@ -94,12 +87,7 @@ class MatchmakingQueueTest {
 
         GameStateDTO result = matchmakingQueue.join(bobId, gameTypeId, INITIAL_BOARD);
 
-        // Returned to the caller...
-        assertEquals(INITIAL_BOARD, result.getBoardState(),
-                "the matched session handed back must carry the opening position, not null");
-        // ...and, more importantly, actually written to the row. Everything that reads the
-        // session back independently -- the admin live monitor, SessionWatchdog's abandon push,
-        // an admin force-end -- used to get a null board here and throw rendering it.
+        assertEquals(INITIAL_BOARD, result.getBoardState());
         assertEquals(INITIAL_BOARD, gameSessionDao.findActiveById(result.getSessionId())
                         .orElseThrow().getBoardState(),
                 "BoardState must be persisted at creation, not left null until the first move");
@@ -136,13 +124,8 @@ class MatchmakingQueueTest {
         int bobId = insertUser("bob");
         int aliceId = insertUser("alice");
 
-        // Bob joins chess: no opponent, Bob is now WAITING for chess.
         GameStateDTO bobJoin = matchmakingQueue.join(bobId, chessGameTypeId, INITIAL_BOARD);
-        // Alice joins checkers: no opponent, Alice is now WAITING for checkers.
         GameStateDTO aliceJoinCheckers = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
-
-        // Alice then joins chess: the opponent lookup would find Bob waiting for chess,
-        // but Alice already has a WAITING row (checkers), so this must be a no-op.
         GameStateDTO aliceJoinChess = matchmakingQueue.join(aliceId, chessGameTypeId, INITIAL_BOARD);
 
         assertNull(bobJoin);
@@ -158,9 +141,6 @@ class MatchmakingQueueTest {
 
     @Test
     void join_callerAlreadyInAnActiveSession_throwsAlreadyInGameException() throws Exception {
-        // The "one slot per user" guard below only ever consulted the MatchmakingQueue table, so
-        // a player with a game in progress could queue again and be paired into a second,
-        // concurrent session -- leaving the first to run its turn timer down to a loss.
         int aliceId = insertUser("alice");
         int bobId = insertUser("bob");
         insertGameSession(gameTypeId, aliceId, bobId, "ACTIVE", null);
@@ -170,14 +150,12 @@ class MatchmakingQueueTest {
                 () -> matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD));
         assertEquals(0, countQueueRows(), "the rejected join must not leave a queue row behind");
 
-        // ...and nobody gets matched against her on a later join either.
         assertNull(matchmakingQueue.join(carolId, gameTypeId, INITIAL_BOARD));
         assertEquals(1, countQueueRows());
     }
 
     @Test
     void join_callerOnlyInAFinishedSession_isAllowedToQueueAgain() throws Exception {
-        // Only ACTIVE sessions block: a player whose last game ended must be free to play again.
         int aliceId = insertUser("alice");
         int bobId = insertUser("bob");
         insertGameSession(gameTypeId, aliceId, bobId, "FINISHED", aliceId);
@@ -298,7 +276,6 @@ class MatchmakingQueueTest {
         }
     }
 
-    /** Writes a session row directly, so a test can set up "this player is already playing." */
     private int insertGameSession(int gameTypeId, int player1Id, int player2Id, String status, Integer winnerId)
             throws Exception {
         String sql = "INSERT INTO GameSession "

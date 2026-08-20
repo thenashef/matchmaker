@@ -53,10 +53,6 @@ public class AdminClientService {
         runAsync(() -> adminConnection.login(username, password),
                 result -> {
                     if (!result.getUser().isAdmin()) {
-                        // adminConnection.login() opens the JMS connection as part of logging
-                        // in, so by now a non-admin already holds an authenticated broker
-                        // connection. Server-side authorization still rejects them everywhere
-                        // that matters -- this is about not leaving the socket open.
                         adminConnection.logout(result.getSessionToken());
                         onNotAdmin.run();
                         return;
@@ -91,8 +87,6 @@ public class AdminClientService {
     }
 
     public void monitorSession(int sessionId, Consumer<GameEventDTO> onEvent) {
-        // Replacing the field without closing what it held would leave the old consumer
-        // attached to the broker, still receiving a session nobody is watching.
         stopMonitoring();
         sessionSubscription = adminConnection.subscribeToSessionTopic(sessionId, onEvent::accept);
     }
@@ -104,7 +98,6 @@ public class AdminClientService {
         }
     }
 
-    /** Mirrors {@code GameClientService.shutdown()} -- see the note there on running inline. */
     public void shutdown() {
         if (sessionToken != null) {
             adminConnection.logout(sessionToken);
@@ -118,7 +111,6 @@ public class AdminClientService {
     }
 
     private void startKeepAlive() {
-        // See GameClientService.startKeepAlive(): a second login must not orphan the first loop.
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
         }

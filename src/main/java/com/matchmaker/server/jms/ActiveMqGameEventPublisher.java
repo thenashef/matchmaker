@@ -18,10 +18,6 @@ public class ActiveMqGameEventPublisher implements GameEventPublisher {
         this.session = session;
     }
 
-    // A javax.jms.Session (and everything created from it) may only be used by one thread at a
-    // time per the JMS spec -- this Session is shared by every RMI caller for the life of the
-    // server, so publishes must be serialized here rather than relying on the broker client's
-    // undocumented internal locking.
     @Override
     public synchronized void publishToPlayer(int userId, GameEventDTO event) {
         try {

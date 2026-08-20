@@ -27,11 +27,9 @@ public class AuthServiceImpl extends UnicastRemoteObject implements AuthService 
         this.userDao = userDao;
     }
 
-    /** Matches the User.Username column's VARCHAR(50). */
     private static final int MAX_USERNAME_LENGTH = 50;
     private static final int MIN_USERNAME_LENGTH = 3;
     private static final int MIN_PASSWORD_LENGTH = 6;
-    /** jbcrypt silently ignores everything past 72 bytes, so anything longer is a false promise. */
     private static final int MAX_PASSWORD_BYTES = 72;
 
     @Override
@@ -67,10 +65,6 @@ public class AuthServiceImpl extends UnicastRemoteObject implements AuthService 
         sessionManager.invalidate(sessionToken);
     }
 
-    /**
-     * Validated here, on the server, rather than only in the login screen -- the RMI interface
-     * is the real trust boundary, and nothing stops a caller from bypassing the UI entirely.
-     */
     private static void validateRegistration(String username, String password)
             throws InvalidRegistrationException {
         if (username == null || username.isBlank()) {

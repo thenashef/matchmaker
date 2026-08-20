@@ -13,7 +13,6 @@ import java.util.Optional;
 
 public class JdbcUserDao implements UserDao {
 
-    /** MySQL's ER_DUP_ENTRY error code — the only integrity violation that means "duplicate key." */
     private static final int MYSQL_DUPLICATE_ENTRY_ERROR_CODE = 1062;
 
     private final DataSource dataSource;
@@ -30,9 +29,6 @@ public class JdbcUserDao implements UserDao {
             stmt.setString(1, username);
             stmt.setString(2, passwordHash);
             stmt.executeUpdate();
-            // Reading the row back through findByUsername() would check a second connection
-            // out of the pool while this one is still held. JdbcGameTypeDao.insert() already
-            // uses the generated key instead; this now matches.
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();
                 return findById(conn, keys.getInt(1));
@@ -100,7 +96,6 @@ public class JdbcUserDao implements UserDao {
         }
     }
 
-    /** Same query as {@link #findById(int)}, but on a caller-supplied connection. */
     private Optional<UserRecord> findById(Connection conn, int id) throws SQLException {
         String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
                 + "FROM User WHERE ID = ?";

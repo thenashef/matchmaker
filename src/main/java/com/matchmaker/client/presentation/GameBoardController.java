@@ -33,12 +33,7 @@ public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
     private static final int TURN_TIMEOUT_SECONDS = 60;
-    /** Last-resort stand-in for a session row written before board state was set at creation. */
     private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
-    // Loaded defensively, not as a plain `= new AudioClip(...)` field initializer -- a null
-    // resource (repackaging, a missing javafx-media native for this platform) would otherwise
-    // throw inside <clinit>, which is an ExceptionInInitializerError that permanently prevents
-    // this class from ever loading again, bricking the whole game board over a missing sound.
     private static final AudioClip TURN_SOUND = loadTurnSound();
 
     private static AudioClip loadTurnSound() {
@@ -64,10 +59,6 @@ public class GameBoardController {
     private final List<String> selectedPath = new ArrayList<>();
     private Set<String> highlightedSquares = Set.of();
     private boolean highlightsLoading = false;
-    // Bumped whenever anything invalidates an in-flight legalContinuations query -- a new
-    // authoritative state arriving, or the selection changing. A response carrying a stale id is
-    // dropped rather than allowed to repaint the board it was computed against. Distinct from
-    // highlightsLoading, which locks *clicks* out during the gap; this one discards *answers*.
     private int highlightRequestId;
     private Timeline turnCountdown;
 
@@ -81,19 +72,12 @@ public class GameBoardController {
     private void applyState(GameStateDTO state) {
         this.currentState = state;
         selectedPath.clear();
-        // A fresh, authoritative state has arrived -- any in-flight highlight/submit lock from
-        // before this point is moot now, whatever it was guarding against is already resolved.
-        // Bumping the id here is what makes that true for a query that has already been sent
-        // and is still on its way back.
         highlightRequestId++;
         highlightsLoading = false;
         updateColorIndicator();
         renderBoard(state);
         updateStatusLabel(state);
 
-        // ABANDONED (auto-forfeit via disconnect/turn-timeout, or an admin force-end) ends the
-        // game exactly like FINISHED does from the board's point of view -- only a status of
-        // ACTIVE means the game is actually still being played.
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
         backToLobbyButton.setVisible(ended);
 
@@ -109,16 +93,6 @@ public class GameBoardController {
         }
     }
 
-    /** Queries the server for every legal way to extend selectedPath by one more step, and
-     *  highlights the resulting squares -- called at the start of a turn (selectedPath is empty
-     *  at that point, so this highlights legal origins, already narrowed to capture-only pieces
-     *  if a capture is mandatory) and again after every accepted click. Purely a UX aid: the
-     *  server's makeMove() remains the real authority on what's actually legal.
-     *
-     *  <p>An empty result for a non-empty selectedPath means it can't be extended any further --
-     *  since every square in selectedPath was itself only ever accepted because a prior call here
-     *  said it was legal, that means selectedPath is now a complete, legal move, and it's
-     *  auto-submitted immediately rather than waiting for a separate "Submit" action. */
     private void refreshHighlights() {
         int requestId = ++highlightRequestId;
         highlightsLoading = true;
@@ -126,17 +100,10 @@ public class GameBoardController {
         payload.put("path", new JSONArray(selectedPath));
         gameClientService.legalContinuations(currentState.getSessionId(), payload.toString(),
                 continuations -> {
-                    // Superseded while this was in flight: the board it describes no longer
-                    // exists. Applying it anyway would paint highlights from the previous
-                    // position -- most visibly, legal-looking moves on a game that just ended.
                     if (requestId != highlightRequestId) {
                         return;
                     }
                     if (continuations.isEmpty() && selectedPath.size() >= 2) {
-                        // Deliberately leaving highlightsLoading == true here rather than
-                        // resetting it -- clicks need to stay locked out through the submit that's
-                        // about to happen too, not just through this query. It's cleared once a
-                        // fresh state actually arrives, in applyState().
                         submitCurrentSelection();
                         return;
                     }
@@ -166,22 +133,12 @@ public class GameBoardController {
         gameClientService.makeMove(currentState.getSessionId(), payload.toString(),
                 this::applyState,
                 error -> {
-                    // Unlike a manual submit, an auto-submit rejection almost certainly means
-                    // selectedPath was built against state that's since changed underneath it
-                    // (a race with the opponent's move) -- clearing and re-querying resyncs with
-                    // whatever's actually legal now, rather than leaving stale, no-longer-valid
-                    // picks on screen.
                     selectedPath.clear();
                     statusLabel.setText(friendlyMoveErrorMessage(error));
                     refreshHighlights();
                 });
     }
 
-    /** Purely a local display -- the server is authoritative on turn timeout (SessionWatchdog),
-     *  and it doesn't know the server's exact TurnStartedAt, so this approximates by counting
-     *  down from the moment this client learns it's its turn rather than the server's real start
-     *  time. Reaching 0 here does nothing on its own; the game only actually ends once a
-     *  SESSION_ABANDONED push arrives and applyState() runs again. */
     private void startTurnCountdown() {
         stopTurnCountdown();
         int[] secondsLeft = {TURN_TIMEOUT_SECONDS};
@@ -236,18 +193,9 @@ public class GameBoardController {
 
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
-        // Sessions are created with a real board now (JdbcMatchmakingQueue.pairOrEnqueue), so a
-        // null here means a row predating that -- an empty grid is a far better outcome than the
-        // NullPointerException org.json throws on a null string, which used to escape applyState()
-        // before updateStatusLabel() ran and leave the board frozen on the previous position.
         JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
         JSONObject pieces = board.getJSONObject("pieces");
 
-        // Each player sees their own color at the bottom, like sitting on opposite sides of the
-        // same physical board -- Black (player1) gets the un-flipped orientation (rank 1 at the
-        // bottom); White (player2) gets the whole board rotated 180 degrees (both rank and file
-        // reversed), not just mirrored vertically, so it looks like the same board turned around
-        // rather than a reflection of it.
         boolean flip = !isPlayer1();
 
         for (int row = 0; row < BOARD_SIZE; row++) {
@@ -297,18 +245,9 @@ public class GameBoardController {
         if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn()) {
             return;
         }
-        // Locked out while a refresh is in flight -- otherwise a click landing in the gap
-        // between "selectedPath just grew" and "the new highlight set arrived" would still be
-        // checked against the stale, pre-click highlight set (which, right after selecting an
-        // origin, still legitimately contains that same origin square as a valid pick from
-        // before it was selected), letting the same square be added to the path twice.
         if (highlightsLoading) {
             return;
         }
-        // highlightedSquares is exactly "what the server says is legal to click right now" --
-        // a click outside it isn't a legal continuation, so it resets the in-progress selection
-        // back to the start of the turn instead of being silently ignored or requiring a
-        // separate "Clear Selection" action.
         if (!highlightedSquares.contains(algebraic)) {
             if (!selectedPath.isEmpty()) {
                 selectedPath.clear();

@@ -30,15 +30,10 @@ class GameClientServiceTest {
 
     @BeforeAll
     static void initJavaFxRuntime() throws InterruptedException {
-        // Platform.startup()'s first real runLater round-trip pays a one-time cost (native
-        // library loading) that can take longer than an individual test's 2-second budget --
-        // absorb that cost here, once, rather than risking it inside whichever test runs first.
         CountDownLatch warmupLatch = new CountDownLatch(1);
         try {
             Platform.startup(warmupLatch::countDown);
         } catch (IllegalStateException alreadyStarted) {
-            // Another test class in this JVM already initialized the toolkit -- still confirm
-            // the FX thread is responsive before proceeding.
             Platform.runLater(warmupLatch::countDown);
         }
         assertTrue(warmupLatch.await(10, TimeUnit.SECONDS), "JavaFX toolkit never became responsive");
@@ -50,7 +45,6 @@ class GameClientServiceTest {
         service = new GameClientService(serverConnection);
     }
 
-    /** Every GameClientService callback fires via Platform.runLater -- block until it does. */
     private <T> T await(java.util.function.Consumer<java.util.function.Consumer<T>> triggerWithCapture) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<T> captured = new AtomicReference<>();

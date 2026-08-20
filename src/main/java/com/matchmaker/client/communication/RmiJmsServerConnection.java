@@ -53,14 +53,8 @@ public class RmiJmsServerConnection implements ServerConnection {
         }
     }
 
-    // The broker requires an authenticated connection (see JmsSecurityPlugin), so the JMS
-    // connection can't be opened until we have a session token to authenticate with -- it's
-    // deferred here and opened right after a successful login, rather than in the constructor.
     private void connectJms(int userId, String sessionToken) {
         try {
-            // Deliberately not reusing server.jms.JmsConnectionFactory -- client code never
-            // imports from com.matchmaker.server.* (see the implementation plan's Global
-            // Constraints), so the handful of lines it would have saved are duplicated instead.
             ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + jmsPort);
             factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
             jmsConnection = factory.createConnection(String.valueOf(userId), sessionToken);
@@ -102,13 +96,11 @@ public class RmiJmsServerConnection implements ServerConnection {
         }
     }
 
-@Override
+    @Override
     public void logout(String sessionToken) {
         try {
             authService.logout(sessionToken);
         } catch (RemoteException e) {
-            // Called from client shutdown, where there is no longer anywhere useful to report
-            // this -- and the token ages out on its own regardless.
             LOG.log(Level.WARNING, "logout() failed", e);
         }
     }
@@ -182,8 +174,6 @@ public class RmiJmsServerConnection implements ServerConnection {
         }
     }
 
-    // A javax.jms.Session may only be used by one thread at a time -- see the identical note on
-    // ActiveMqGameEventPublisher, which this mirrors.
     private synchronized Subscription subscribe(DestinationFactory destinationFactory, ServerEventListener listener) {
         try {
             Destination destination = destinationFactory.create(jmsSession);

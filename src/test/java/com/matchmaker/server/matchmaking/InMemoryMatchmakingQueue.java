@@ -20,8 +20,6 @@ public class InMemoryMatchmakingQueue implements MatchmakingQueue {
             return null;
         }
         waitingUserIdByGameTypeId.remove(gameTypeId);
-        // Mirrors JdbcMatchmakingQueue: the caller's opening position is stored on the new
-        // session, so a matched session never carries a null board.
         return new GameStateDTO(nextSessionId.getAndIncrement(), gameTypeId, opponentUserId, userId,
                 GameStatus.ACTIVE, opponentUserId, null, initialBoardState);
     }

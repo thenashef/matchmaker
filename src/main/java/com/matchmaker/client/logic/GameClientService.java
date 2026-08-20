@@ -114,9 +114,6 @@ public class GameClientService {
                 onSuccess, onError);
     }
 
-    /** Registers for live session-topic pushes and returns whatever the latest known state is,
-     *  so the caller (GameBoardController) can render immediately even if it attaches slightly
-     *  after enterGame() already subscribed -- nothing published in that gap is missed. */
     public GameStateDTO attachGameUpdateListener(Consumer<GameStateDTO> listener) {
         this.gameUpdateListener = listener;
         return currentGameState;
@@ -131,13 +128,6 @@ public class GameClientService {
         currentGameState = null;
     }
 
-    /**
-     * Revokes the session token and stops both executors. Called from {@code ClientMain.stop()}.
-     *
-     * <p>The logout runs inline rather than through {@link #runAsync}: that path finishes on
-     * {@code Platform.runLater}, and by the time this is called the FX thread is shutting down,
-     * so the callback would never run and the token would be left valid until it aged out.
-     */
     public void shutdown() {
         if (sessionToken != null) {
             serverConnection.logout(sessionToken);
@@ -150,8 +140,6 @@ public class GameClientService {
     }
 
     private void startKeepAlive() {
-        // Shut down any previous loop first -- a second login in the same process would
-        // otherwise leave the first one running forever against a token nobody is using.
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
         }
@@ -170,9 +158,6 @@ public class GameClientService {
         }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
-    /** Subscribes to the session's topic the instant a session id is known -- before returning
-     *  control to any caller -- per the design doc's Queue-vs-Topic delivery-guarantee note:
-     *  a Topic gives no retention to a late subscriber, so this must happen first, always. */
     private void enterGame(GameStateDTO initialState) {
         currentGameState = initialState;
         sessionTopicSubscription = serverConnection.subscribeToSessionTopic(
@@ -184,9 +169,6 @@ public class GameClientService {
             return;
         }
         Platform.runLater(() -> {
-            // Deliberately not closePlayerQueueSubscription() here -- that helper also clears
-            // pendingMatchCallback, which is still needed a few lines below to actually fire the
-            // match. Only the subscription itself needs closing at this point.
             if (playerQueueSubscription != null) {
                 playerQueueSubscription.close();
                 playerQueueSubscription = null;

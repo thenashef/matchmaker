@@ -26,11 +26,6 @@ public class SessionWatchdog {
     private final GameEventPublisher gameEventPublisher;
     private final Duration disconnectTimeout;
     private final Duration turnTimeout;
-    // A user who was never seen at all (SessionManager restarted with the process, or the sweep
-    // ran before they had a chance to log back in and start pinging) must not be treated as
-    // silent until this much time has passed since the watchdog itself started -- otherwise every
-    // in-flight session gets abandoned within one tick of every server restart, regardless of
-    // whether anyone actually disconnected.
     private final Instant startedAt = Instant.now();
 
     private ScheduledExecutorService executor;
@@ -63,9 +58,6 @@ public class SessionWatchdog {
 
     public void sweepOnce() {
         try {
-            // Piggybacks on this tick rather than running a timer of its own. Inside the same
-            // defensive try as everything else here: an exception escaping sweepOnce() would
-            // stop scheduleAtFixedRate from ever running it again.
             sessionManager.evictExpired();
         } catch (Exception e) {
             LOG.log(Level.WARNING, "SessionWatchdog: failed to evict expired sessions", e);
@@ -75,9 +67,6 @@ public class SessionWatchdog {
         try {
             activeSessions = gameSessionDao.findAllActive();
         } catch (Exception e) {
-            // A transient DB failure must not escape this method -- scheduleAtFixedRate silently
-            // stops running a task forever the first time it throws, which would permanently and
-            // invisibly kill all disconnect/turn-timeout detection for the rest of the process.
             LOG.log(Level.WARNING, "SessionWatchdog: failed to list active sessions", e);
             return;
         }
@@ -85,8 +74,6 @@ public class SessionWatchdog {
             try {
                 checkSession(session);
             } catch (Exception e) {
-                // One bad session (e.g. an unexpected DB state) must not prevent every other
-                // session in this same tick from being checked.
                 LOG.log(Level.WARNING, "SessionWatchdog: failed to check session " + session.getSessionId(), e);
             }
         }
@@ -144,8 +131,6 @@ public class SessionWatchdog {
             gameEventPublisher.publishToSession(sessionId,
                     new GameEventDTO(GameEventType.SESSION_ABANDONED, sessionId, abandoned.get()));
         } catch (JmsPublishException e) {
-            // The abandon already committed to the DB -- a failed notification shouldn't undo
-            // it. Mirrors PlayerServiceImpl.makeMove()'s and joinQueue()'s identical handling.
             LOG.log(Level.WARNING, "Failed to notify session " + sessionId + " of abandonment", e);
         }
     }

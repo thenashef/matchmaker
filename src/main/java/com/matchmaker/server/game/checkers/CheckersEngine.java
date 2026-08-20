@@ -45,9 +45,6 @@ public class CheckersEngine implements GameEngine {
             return List.of();
         }
         CheckersBoard board = CheckersBoard.fromJson(stateJson);
-        // A multi-jump chain can have several full-length legal moves sharing the same prefix
-        // one step past pathSoFar before diverging further -- without deduping on the extended
-        // prefix itself, the same next square would appear once per such move.
         Set<List<Square>> seen = new LinkedHashSet<>();
         List<String> continuations = new ArrayList<>();
         for (Move legal : legalMoves(board, isPlayer1Turn)) {

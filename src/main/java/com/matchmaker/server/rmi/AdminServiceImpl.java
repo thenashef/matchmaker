@@ -83,8 +83,6 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
                 gameEventPublisher.publishToSession(gameSessionId,
                         new GameEventDTO(GameEventType.SESSION_FORCE_ENDED, gameSessionId, ended));
             } catch (JmsPublishException e) {
-                // The DB update already committed -- a failed notification shouldn't fail this
-                // admin call. Mirrors PlayerServiceImpl.makeMove()'s identical handling.
                 LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of force-end", e);
             }
         });

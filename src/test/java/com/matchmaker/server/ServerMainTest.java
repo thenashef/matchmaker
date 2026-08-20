@@ -67,7 +67,6 @@ class ServerMainTest {
         assertInstanceOf(PlayerService.class, playerStub);
         assertInstanceOf(AdminService.class, adminStub);
 
-        // Proves these are real RMI stubs obtained through the registry, not the local impl objects.
         assertNotSame(started.authService(), authStub);
         assertNotSame(started.playerService(), playerStub);
         assertNotSame(started.adminService(), adminStub);

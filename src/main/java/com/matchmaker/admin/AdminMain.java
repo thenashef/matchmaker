@@ -9,8 +9,6 @@ import javafx.stage.Stage;
 
 public class AdminMain extends Application {
 
-    // Duplicated from ServerMain's RMI_PORT/JMS_PORT rather than imported -- admin code never
-    // depends on com.matchmaker.server.*, same rule client code already follows.
     private static final String SERVER_HOST = "localhost";
     private static final int RMI_PORT = 1099;
     private static final int JMS_PORT = 61616;
@@ -30,7 +28,6 @@ public class AdminMain extends Application {
 
     @Override
     public void stop() {
-        // See ClientMain.stop(): logout() goes over RMI, so it has to happen first.
         if (adminClientService != null) {
             adminClientService.shutdown();
         }

@@ -22,10 +22,8 @@ import com.matchmaker.server.rmi.PlayerServiceImpl;
 import org.apache.activemq.broker.BrokerService;
 
 import javax.jms.Connection;
-import javax.jms.JMSException;
 import javax.jms.Session;
 import javax.sql.DataSource;
-import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.time.Duration;
@@ -45,21 +43,12 @@ public class ServerMain {
 
     public static void main(String[] args) throws Exception {
         Started started = startWithImpls(RMI_PORT, JMS_PORT);
-
-        // main() blocks forever below, so without this nothing ever runs on the way out: the
-        // broker, its connection and the Hikari pool were all left to die with the process.
-        // Registered only here, not in startWithImpls(), because tests construct and tear down
-        // their own instances and must not accumulate a hook per test.
         Runtime.getRuntime().addShutdownHook(new Thread(started::close, "server-shutdown"));
 
         System.out.println("MatchMaker RMI registry started on port " + RMI_PORT);
         System.out.println("Bound services: AuthService, PlayerService, AdminService");
         System.out.println("JMS broker listening on tcp://localhost:" + JMS_PORT);
 
-        // RMI's exported objects are served by daemon-ish background threads that don't, on their
-        // own, keep the launching JVM alive -- under `mvn exec:java` Maven exits as soon as main()
-        // returns and port 1099 closes with it. Block the main thread forever so the server stays
-        // up until the process is killed (Ctrl-C / SIGTERM).
         Thread.currentThread().join();
     }
 
@@ -67,12 +56,6 @@ public class ServerMain {
         return startWithImpls(rmiPort, jmsPort).registry();
     }
 
-    /**
-     * Package-private variant of {@link #start(int, int)} that also hands back the constructed
-     * service impls (not just the registry), so tests can unexport each one individually in
-     * teardown -- {@code registry.lookup(...)} only ever returns a client-side stub, which
-     * can't be passed to {@code UnicastRemoteObject.unexportObject}.
-     */
     static Started startWithImpls(int rmiPort, int jmsPort) throws Exception {
         SessionManager sessionManager = new SessionManager();
 
@@ -117,12 +100,6 @@ public class ServerMain {
                     AuthServiceImpl authService, PlayerServiceImpl playerService, AdminServiceImpl adminService,
                     SessionWatchdog sessionWatchdog) {
 
-        /**
-         * Releases everything {@link #startWithImpls} acquired, in reverse order: stop accepting
-         * work, then close the transport, then the broker, then the pool. Each step is guarded
-         * so that one failure can't skip the rest -- a shutdown hook that throws part-way is
-         * worse than no shutdown hook at all.
-         */
         void close() {
             closing("session watchdog", sessionWatchdog::stop);
             closing("JMS connection", jmsConnection::close);

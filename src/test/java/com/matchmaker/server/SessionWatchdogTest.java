@@ -29,9 +29,6 @@ class SessionWatchdogTest {
 
     @Test
     void sweepOnce_oneParticipantSilent_abandonsWithOtherPlayerWinning() throws Exception {
-        // turnTimeout is deliberately long here so only the disconnect branch can possibly fire --
-        // with equal thresholds, an 80ms sleep would trip the turn-timeout check too and this
-        // test would pass even if the disconnect branch were deleted entirely.
         SessionWatchdog watchdog = new SessionWatchdog(
                 sessionManager, gameSessionDao, gameEventPublisher, SHORT_TIMEOUT, LONG_TIMEOUT);
         String token1 = sessionManager.createSession(1);
@@ -98,8 +95,6 @@ class SessionWatchdogTest {
 
     @Test
     void sweepOnce_healthySession_leavesItUntouched() throws Exception {
-        // Generous thresholds so this can't flake under a cold JVM/GC pause -- the entire test
-        // body has to run in under 10s, not 50ms.
         SessionWatchdog watchdog = new SessionWatchdog(
                 sessionManager, gameSessionDao, gameEventPublisher, LONG_TIMEOUT, LONG_TIMEOUT);
         String token1 = sessionManager.createSession(1);
@@ -117,9 +112,6 @@ class SessionWatchdogTest {
 
     @Test
     void sweepOnce_participantNeverSeen_leavesSessionUntouchedWithinGracePeriod() {
-        // Neither player has ever resolved a token -- lastSeen is empty for both. Without a
-        // startup grace period this would be indistinguishable from "both disconnected," and
-        // every in-flight game would get abandoned within one tick of every server restart.
         SessionWatchdog watchdog = new SessionWatchdog(
                 sessionManager, gameSessionDao, gameEventPublisher, LONG_TIMEOUT, LONG_TIMEOUT);
         gameSessionDao.addActiveSession(new GameStateDTO(10, 1, 1, 2, GameStatus.ACTIVE, 1, null, "{}"));
@@ -169,11 +161,7 @@ class SessionWatchdogTest {
         sessionManager.resolve(token2);
         sessionManager.resolve(token3);
         sessionManager.resolve(token4);
-        // Session 10: both participants stay fresh below, so checkSession falls through to the
-        // turn-timeout branch -- currentTurnStartedAt(10) throws there (see ThrowingGameSessionDao).
         gameSessionDao.addActiveSession(new GameStateDTO(10, 1, 1, 2, GameStatus.ACTIVE, 1, null, "{}"));
-        // Session 20: participant 3 goes silent below, handled by the disconnect branch, which
-        // never calls currentTurnStartedAt() at all -- proves this session still gets processed.
         gameSessionDao.addActiveSession(new GameStateDTO(20, 1, 3, 4, GameStatus.ACTIVE, 3, null, "{}"));
 
         Thread.sleep(80);
@@ -187,8 +175,6 @@ class SessionWatchdogTest {
         assertTrue(gameSessionDao.findActiveById(20).isEmpty(), "session 20 should still have been abandoned");
     }
 
-    /** Delegates to a real InMemoryGameSessionDao but throws from either findAllActive() (if
-     *  alwaysThrowOnFindAllActive) or currentTurnStartedAt() for one specific session id. */
     private static class ThrowingGameSessionDao implements GameSessionDao {
         private final GameSessionDao delegate;
         private final boolean alwaysThrowOnFindAllActive;

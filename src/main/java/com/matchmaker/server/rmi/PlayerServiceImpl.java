@@ -60,9 +60,6 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     public GameStateDTO joinQueue(String sessionToken, int gameTypeId)
             throws RemoteException, AuthenticationException, AlreadyInGameException {
         int userId = sessionManager.resolve(sessionToken);
-        // The opening position is handed to the queue rather than patched in afterwards, so the
-        // session row carries a real board from the moment it exists -- for the MATCH_FOUND push
-        // and this return value, but equally for the readers that had no fallback of their own.
         GameStateDTO result = matchmakingQueue.join(userId, gameTypeId, gameEngine.initialState());
 
         if (result != null) {
@@ -72,8 +69,6 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             } else if (result.getPlayer2Id() == userId) {
                 opponentUserId = result.getPlayer1Id();
             } else {
-                // Caller isn't either participant in the session MatchmakingQueue.join() handed
-                // back -- that's a bug elsewhere, not something to guess an opponent for.
                 opponentUserId = null;
                 LOG.log(Level.WARNING, "joinQueue: matched session " + result.getSessionId()
                         + " does not include caller " + userId + " as either player -- skipping opponent notification");
@@ -84,8 +79,6 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                     gameEventPublisher.publishToPlayer(opponentUserId,
                             new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result));
                 } catch (JmsPublishException e) {
-                    // The pairing already committed to the DB -- a failed notification to the
-                    // *other* player shouldn't fail this caller's own, already-successful result.
                     LOG.log(Level.WARNING, "Failed to notify opponent " + opponentUserId + " of match", e);
                 }
             }
@@ -140,9 +133,6 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         try {
             persistedSession = gameSessionDao.recordMove(updatedSession, userId, movePayload);
         } catch (ConcurrentGameUpdateException e) {
-            // Someone else's call for this same session committed first since we read it --
-            // from this caller's perspective that means the turn/status they validated
-            // against is stale, which is exactly what NotYourTurnException communicates.
             throw new NotYourTurnException("Session " + gameSessionId + " changed since it was read -- "
                     + "it is no longer user " + userId + "'s turn (or the game already ended)");
         }
@@ -151,8 +141,6 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             gameEventPublisher.publishToSession(gameSessionId,
                     new GameEventDTO(GameEventType.MOVE_MADE, gameSessionId, persistedSession));
         } catch (JmsPublishException e) {
-            // The move already committed to the DB -- a failed notification shouldn't undo or
-            // fail the mover's own already-successful result. Mirrors joinQueue()'s handling.
             LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of move", e);
         }
 
@@ -181,19 +169,19 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     @Override
     public void sendChatMessage(String sessionToken, int gameSessionId, String content)
             throws RemoteException, AuthenticationException, NotParticipantException {
-        throw new UnsupportedOperationException("sendChatMessage not implemented yet -- see build-plan.md step 6");
+        throw new UnsupportedOperationException("sendChatMessage not implemented yet");
     }
 
     @Override
     public void resign(String sessionToken, int gameSessionId)
             throws RemoteException, AuthenticationException, NotParticipantException {
-        throw new UnsupportedOperationException("resign not implemented yet -- see build-plan.md step 7");
+        throw new UnsupportedOperationException("resign not implemented yet");
     }
 
     @Override
     public GameStateDTO rematch(String sessionToken, int finishedSessionId)
             throws RemoteException, AuthenticationException, NotParticipantException {
-        throw new UnsupportedOperationException("rematch not implemented yet -- see build-plan.md step 10");
+        throw new UnsupportedOperationException("rematch not implemented yet");
     }
 
     @Override

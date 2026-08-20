@@ -9,8 +9,6 @@ import java.io.IOException;
 
 public class SceneNavigator {
 
-    // One fixed window size for every screen -- same reasoning as client.presentation's
-    // SceneNavigator: no per-screen resizing, sized to comfortably fit the Dashboard's table.
     private static final double WINDOW_WIDTH = 720;
     private static final double WINDOW_HEIGHT = 600;
 

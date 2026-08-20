@@ -80,20 +80,16 @@ class GameSessionDaoTest {
     void recordMove_sessionNoLongerMatchesTheStateItWasReadIn_throwsConcurrentGameUpdateException() throws Exception {
         int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
 
-        // First call: player1 moves, turn flips to player2. This commits successfully.
         GameStateDTO firstUpdate = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
                 GameStatus.ACTIVE, player2Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}");
         gameSessionDao.recordMove(firstUpdate, player1Id, "{\"path\":[\"b2\",\"a3\"]}");
 
-        // A second call still claiming to move as player1 (as if it had read the session
-        // before the first update committed) must not be allowed to silently overwrite it.
         GameStateDTO staleUpdate = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
                 GameStatus.ACTIVE, player2Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{\"c3\":\"b\"}}");
 
         assertThrows(ConcurrentGameUpdateException.class,
                 () -> gameSessionDao.recordMove(staleUpdate, player1Id, "{\"path\":[\"b2\",\"c3\"]}"));
 
-        // The first (legitimate) update must still stand -- not overwritten or rolled back.
         Optional<GameStateDTO> reloaded = gameSessionDao.findActiveById(sessionId);
         assertTrue(reloaded.isPresent());
         assertEquals("{\"rows\":8,\"cols\":8,\"pieces\":{\"a3\":\"b\"}}", reloaded.get().getBoardState());
@@ -138,11 +134,6 @@ class GameSessionDaoTest {
 
     @Test
     void recordMove_gameEndingInADraw_recordsDrawsForBothAndDoesNotThrow() throws Exception {
-        // A FINISHED session with a null winner is exactly what PlayerServiceImpl.makeMove()
-        // builds for GameResult.DRAW. recordMove() used to unbox that null into an int, and the
-        // resulting NullPointerException escaped the SQLException-only catch -- past the finally,
-        // whose setAutoCommit(true) then committed the half-written transaction. The row ended up
-        // FINISHED with the move recorded but no ratings applied, and the caller got an NPE.
         int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
         int player1RatingBefore = ratingOf(player1Id);
 
@@ -157,22 +148,15 @@ class GameSessionDaoTest {
         assertEquals(1, drawsOf(player2Id));
         assertEquals(0, winsOf(player1Id), "a draw is not a win for anyone");
         assertEquals(0, lossesOf(player2Id), "a draw is not a loss for anyone");
-        // Equal ratings going in means a score of 0.5 is exactly the expected result, so neither
-        // player's rating should move.
         assertEquals(player1RatingBefore, ratingOf(player1Id));
     }
 
     @Test
     void recordMove_concurrentUpdate_stillSurfacesAsConcurrentGameUpdateException() throws Exception {
-        // Guard for the widened catch in recordMove(): ConcurrentGameUpdateException is itself a
-        // RuntimeException, so catching RuntimeException without re-throwing this one first would
-        // bury an expected race outcome inside a DaoException -- and cost PlayerServiceImpl its
-        // translation to NotYourTurnException.
         int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
         GameStateDTO staleTurn = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
                 GameStatus.ACTIVE, player1Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{}}");
 
-        // player2 is not the current turn holder, so the guarded UPDATE matches zero rows.
         assertThrows(ConcurrentGameUpdateException.class,
                 () -> gameSessionDao.recordMove(staleTurn, player2Id, "{\"path\":[\"g7\",\"h8\"]}"));
     }
@@ -219,8 +203,6 @@ class GameSessionDaoTest {
         assertTrue(result.isPresent());
         assertEquals(GameStatus.ABANDONED, result.get().getStatus());
         assertEquals(Integer.valueOf(player1Id), result.get().getWinnerId());
-        // A stale CurrentTurnUserID would make the client's board keep thinking the game is
-        // still in progress and it's still someone's turn -- see GameBoardController.applyState().
         assertNull(result.get().getCurrentTurnUserId());
         assertTrue(ratingOf(player1Id) > player1RatingBefore);
         assertTrue(ratingOf(player2Id) < player2RatingBefore);
@@ -273,9 +255,6 @@ class GameSessionDaoTest {
         Optional<Instant> turnStartedAt = gameSessionDao.currentTurnStartedAt(sessionId);
 
         assertTrue(turnStartedAt.isPresent());
-        // Guards against a DB/JVM timezone mismatch silently producing an instant hours off --
-        // that would make SessionWatchdog's turn-timeout check fire immediately (or never), and
-        // a bare isPresent() assertion here would never catch it.
         assertTrue(Duration.between(turnStartedAt.get(), Instant.now()).abs().toSeconds() < 60,
                 "expected TurnStartedAt to read back within 60s of now, was " + turnStartedAt.get());
     }

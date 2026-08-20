@@ -48,14 +48,8 @@ public class RmiJmsAdminConnection implements AdminConnection {
         }
     }
 
-    // The broker requires an authenticated connection (see JmsSecurityPlugin), so the JMS
-    // connection can't be opened until we have a session token to authenticate with -- it's
-    // deferred here and opened right after a successful login, rather than in the constructor.
     private void connectJms(int userId, String sessionToken) {
         try {
-            // Deliberately not shared with client.communication.RmiJmsServerConnection -- admin
-            // stays fully independent of the player client, same reasoning as keeping both
-            // independent of server.*.
             ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + jmsPort);
             factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
             jmsConnection = factory.createConnection(String.valueOf(userId), sessionToken);
@@ -87,13 +81,11 @@ public class RmiJmsAdminConnection implements AdminConnection {
         }
     }
 
-@Override
+    @Override
     public void logout(String sessionToken) {
         try {
             authService.logout(sessionToken);
         } catch (RemoteException e) {
-            // Called from client shutdown, where there is no longer anywhere useful to report
-            // this -- and the token ages out on its own regardless.
             LOG.log(Level.WARNING, "logout() failed", e);
         }
     }

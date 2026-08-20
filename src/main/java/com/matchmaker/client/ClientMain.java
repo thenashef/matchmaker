@@ -9,8 +9,6 @@ import javafx.stage.Stage;
 
 public class ClientMain extends Application {
 
-    // Duplicated from ServerMain's RMI_PORT/JMS_PORT rather than imported -- client code never
-    // depends on com.matchmaker.server.* (see the implementation plan's Global Constraints).
     private static final String SERVER_HOST = "localhost";
     private static final int RMI_PORT = 1099;
     private static final int JMS_PORT = 61616;
@@ -30,8 +28,6 @@ public class ClientMain extends Application {
 
     @Override
     public void stop() {
-        // Revoke the token before tearing down the transport it travels over -- shutdown()
-        // needs a working RMI connection to call logout().
         if (gameClientService != null) {
             gameClientService.shutdown();
         }

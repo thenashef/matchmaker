@@ -39,8 +39,6 @@ public class InMemoryUserDao implements UserDao {
         return new ArrayList<>(usersByUsername.values());
     }
 
-    /** Test-only helper -- insert() always creates a non-admin record, mirroring real
-     *  registration, so tests that need an admin account promote one afterward. */
     public synchronized void markAdmin(int userId) {
         usersByUsername.replaceAll((username, record) -> record.id() == userId
                 ? new UserRecord(record.id(), record.username(), record.passwordHash(), true,
