@@ -92,7 +92,13 @@ public class AdminClientService {
         }
     }
 
+    /** Mirrors {@code GameClientService.shutdown()} -- see the note there on running inline. */
     public void shutdown() {
+        if (sessionToken != null) {
+            adminConnection.logout(sessionToken);
+            sessionToken = null;
+        }
+        stopMonitoring();
         backgroundExecutor.shutdownNow();
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
@@ -100,6 +106,10 @@ public class AdminClientService {
     }
 
     private void startKeepAlive() {
+        // See GameClientService.startKeepAlive(): a second login must not orphan the first loop.
+        if (keepAliveExecutor != null) {
+            keepAliveExecutor.shutdownNow();
+        }
         keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "keep-alive");
             thread.setDaemon(true);

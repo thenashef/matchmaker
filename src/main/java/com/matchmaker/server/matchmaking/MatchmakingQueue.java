@@ -1,6 +1,7 @@
 package com.matchmaker.server.matchmaking;
 
 import com.matchmaker.common.dto.GameStateDTO;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 
 public interface MatchmakingQueue {
 
@@ -17,6 +18,10 @@ public interface MatchmakingQueue {
      * 6), since their own {@code join()} call already returned {@code null} before this
      * pairing happened.
      *
+     * <p>Throws {@link AlreadyInGameException} if the caller already has an ACTIVE session —
+     * a distinct signal from the {@code null} above, which means "queued, now wait" and would
+     * otherwise strand them on the waiting screen.
+     *
      * <p>{@code initialBoardState} is the opening position to store on the new session,
      * passed in rather than derived here so this stays game-agnostic: the queue persists
      * whatever opaque state string it is handed, exactly as it already treats move payloads,
@@ -25,7 +30,8 @@ public interface MatchmakingQueue {
      * would otherwise have to guess (the admin monitor, the watchdog's abandon push, an
      * admin force-end) previously crashed on the null this used to leave behind.
      */
-    GameStateDTO join(int userId, int gameTypeId, String initialBoardState);
+    GameStateDTO join(int userId, int gameTypeId, String initialBoardState)
+            throws AlreadyInGameException;
 
     void cancel(int userId);
 }

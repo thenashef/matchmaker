@@ -127,7 +127,18 @@ public class GameClientService {
         currentGameState = null;
     }
 
+    /**
+     * Revokes the session token and stops both executors. Called from {@code ClientMain.stop()}.
+     *
+     * <p>The logout runs inline rather than through {@link #runAsync}: that path finishes on
+     * {@code Platform.runLater}, and by the time this is called the FX thread is shutting down,
+     * so the callback would never run and the token would be left valid until it aged out.
+     */
     public void shutdown() {
+        if (sessionToken != null) {
+            serverConnection.logout(sessionToken);
+            sessionToken = null;
+        }
         backgroundExecutor.shutdownNow();
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
@@ -135,6 +146,11 @@ public class GameClientService {
     }
 
     private void startKeepAlive() {
+        // Shut down any previous loop first -- a second login in the same process would
+        // otherwise leave the first one running forever against a token nobody is using.
+        if (keepAliveExecutor != null) {
+            keepAliveExecutor.shutdownNow();
+        }
         keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "keep-alive");
             thread.setDaemon(true);

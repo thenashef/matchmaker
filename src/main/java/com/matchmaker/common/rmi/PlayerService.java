@@ -2,6 +2,7 @@ package com.matchmaker.common.rmi;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
 import com.matchmaker.common.exceptions.NotParticipantException;
@@ -31,7 +32,7 @@ public interface PlayerService extends Remote {
      * the moment they're paired.
      */
     GameStateDTO joinQueue(String sessionToken, int gameTypeId)
-        throws RemoteException, AuthenticationException;
+        throws RemoteException, AuthenticationException, AlreadyInGameException;
 
     void cancelQueue(String sessionToken)
         throws RemoteException, AuthenticationException;

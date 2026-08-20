@@ -53,6 +53,20 @@ class MatchmakerExceptionHierarchyTest {
     }
 
     @Test
+    void alreadyInGameException_carriesMessage_andExtendsBase() {
+        AlreadyInGameException ex = new AlreadyInGameException("already playing");
+        assertEquals("already playing", ex.getMessage());
+        assertTrue(ex instanceof MatchmakerException);
+    }
+
+    @Test
+    void invalidRegistrationException_carriesMessage_andExtendsBase() {
+        InvalidRegistrationException ex = new InvalidRegistrationException("username too short");
+        assertEquals("username too short", ex.getMessage());
+        assertTrue(ex instanceof MatchmakerException);
+    }
+
+    @Test
     void notAdminException_carriesMessage_andExtendsBase() {
         NotAdminException ex = new NotAdminException("not an admin");
         assertEquals("not an admin", ex.getMessage());

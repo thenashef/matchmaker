@@ -5,6 +5,7 @@ import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
 import com.matchmaker.common.exceptions.NotParticipantException;
@@ -52,7 +53,8 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     }
 
     @Override
-    public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws RemoteException, AuthenticationException {
+    public GameStateDTO joinQueue(String sessionToken, int gameTypeId)
+            throws RemoteException, AuthenticationException, AlreadyInGameException {
         int userId = sessionManager.resolve(sessionToken);
         // The opening position is handed to the queue rather than patched in afterwards, so the
         // session row carries a real board from the moment it exists -- for the MATCH_FOUND push

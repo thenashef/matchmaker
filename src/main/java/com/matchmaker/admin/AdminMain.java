@@ -16,11 +16,12 @@ public class AdminMain extends Application {
     private static final int JMS_PORT = 61616;
 
     private RmiJmsAdminConnection adminConnection;
+    private AdminClientService adminClientService;
 
     @Override
     public void start(Stage primaryStage) {
         adminConnection = new RmiJmsAdminConnection(SERVER_HOST, RMI_PORT, JMS_PORT);
-        AdminClientService adminClientService = new AdminClientService(adminConnection);
+        adminClientService = new AdminClientService(adminConnection);
         SceneNavigator navigator = new SceneNavigator(primaryStage);
 
         AdminLoginController controller = navigator.show("AdminLoginView.fxml", "MatchMaker Admin - Login");
@@ -29,6 +30,10 @@ public class AdminMain extends Application {
 
     @Override
     public void stop() {
+        // See ClientMain.stop(): logout() goes over RMI, so it has to happen first.
+        if (adminClientService != null) {
+            adminClientService.shutdown();
+        }
         if (adminConnection != null) {
             adminConnection.close();
         }

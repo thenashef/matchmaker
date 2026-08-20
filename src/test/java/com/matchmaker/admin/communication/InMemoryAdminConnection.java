@@ -25,6 +25,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     private boolean forceEndSessionCalled = false;
     private NotAdminException notAdminFailure;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
+    private final java.util.List<String> loggedOutTokens = new java.util.ArrayList<>();
     private volatile String lastKeepAliveToken;
 
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
@@ -38,12 +39,18 @@ public class InMemoryAdminConnection implements AdminConnection {
     public void setNotAdminFailure(NotAdminException failure) { this.notAdminFailure = failure; }
     public boolean wasForceEndSessionCalled() { return forceEndSessionCalled; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
+    public java.util.List<String> loggedOutTokens() { return loggedOutTokens; }
     public String lastKeepAliveToken() { return lastKeepAliveToken; }
 
     @Override
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
         if (loginFailure != null) throw loginFailure;
         return loginResult;
+    }
+
+    @Override
+    public void logout(String sessionToken) {
+        loggedOutTokens.add(sessionToken);
     }
 
     @Override

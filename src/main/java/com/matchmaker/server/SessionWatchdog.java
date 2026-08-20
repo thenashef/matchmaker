@@ -58,6 +58,15 @@ public class SessionWatchdog {
     }
 
     public void sweepOnce() {
+        try {
+            // Piggybacks on this tick rather than running a timer of its own. Inside the same
+            // defensive try as everything else here: an exception escaping sweepOnce() would
+            // stop scheduleAtFixedRate from ever running it again.
+            sessionManager.evictExpired();
+        } catch (Exception e) {
+            System.err.println("SessionWatchdog: failed to evict expired sessions: " + e.getMessage());
+        }
+
         List<GameStateDTO> activeSessions;
         try {
             activeSessions = gameSessionDao.findAllActive();

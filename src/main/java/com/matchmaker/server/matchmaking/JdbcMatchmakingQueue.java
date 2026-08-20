@@ -2,6 +2,7 @@ package com.matchmaker.server.matchmaking;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.server.dao.DaoException;
 
 import javax.sql.DataSource;
@@ -33,7 +34,7 @@ import java.sql.Timestamp;
  * Java's {@code synchronized} only guarantees mutual exclusion in memory — it says nothing
  * about the database by itself. What makes this safe is that the transaction's {@code
  * commit()} happens <em>inside</em> the synchronized method, before the monitor is
- * released (see {@link #join(int, int)}: {@code commit()} is called, then the method
+ * released (see {@link #join(int, int, String)}: {@code commit()} is called, then the method
  * returns, releasing the lock only after that). That ordering matters: it means the next
  * thread to acquire the lock — whether it's another {@code join()} or a {@code cancel()} —
  * is guaranteed to see an already-committed, fully consistent view of the queue and session
@@ -60,13 +61,19 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
     }
 
     @Override
-    public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState) {
+    public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState)
+            throws AlreadyInGameException {
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
             try {
                 GameStateDTO result = pairOrEnqueue(conn, userId, gameTypeId, initialBoardState);
                 conn.commit();
                 return result;
+            } catch (AlreadyInGameException e) {
+                // Raised before anything is written, so this rollback is a formality -- but it
+                // hands a clean connection back to the pool rather than one mid-transaction.
+                conn.rollback();
+                throw e;
             } catch (SQLException e) {
                 conn.rollback();
                 throw new DaoException("Failed to join matchmaking queue for user " + userId, e);
@@ -89,7 +96,29 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
     }
 
     private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId, String initialBoardState)
-            throws SQLException {
+            throws SQLException, AlreadyInGameException {
+        // The "one queue slot per user" guard below only ever consulted the MatchmakingQueue
+        // table, which left a whole second route to a double-match: a player with a game
+        // already in progress could queue again and be paired into a concurrent session, while
+        // the first one sat there running down its turn timer toward a loss they never saw.
+        //
+        // Checked inside this same transaction, not up in PlayerServiceImpl, for the same
+        // reason the queue check is: it is only meaningful if it can't interleave with the
+        // pairing logic below, and everything here runs under the instance monitor with the
+        // commit happening before the lock is released.
+        String findActiveSessionSql = "SELECT ID FROM GameSession "
+                + "WHERE (Player1ID = ? OR Player2ID = ?) AND Status = 'ACTIVE' LIMIT 1";
+        try (PreparedStatement stmt = conn.prepareStatement(findActiveSessionSql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    throw new AlreadyInGameException("User " + userId + " is already in active game session "
+                            + rs.getInt("ID"));
+                }
+            }
+        }
+
         // Deliberately NOT scoped by GameTypeID: a user can only ever occupy one
         // queue slot at a time, for one game type, mirroring cancel(int userId)'s
         // "one queue slot per user" model below. Scoping this check by game type as

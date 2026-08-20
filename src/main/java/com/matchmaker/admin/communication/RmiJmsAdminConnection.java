@@ -83,6 +83,17 @@ public class RmiJmsAdminConnection implements AdminConnection {
         }
     }
 
+@Override
+    public void logout(String sessionToken) {
+        try {
+            authService.logout(sessionToken);
+        } catch (RemoteException e) {
+            // Called from client shutdown, where there is no longer anywhere useful to report
+            // this -- and the token ages out on its own regardless.
+            System.err.println("logout() failed: " + e.getMessage());
+        }
+    }
+
     @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException, NotAdminException {
         try {

@@ -2,6 +2,7 @@ package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -58,7 +59,9 @@ public class LobbyController {
                 },
                 error -> {
                     joinButton.setDisable(false);
-                    statusLabel.setText(error.getMessage());
+                    statusLabel.setText(error instanceof AlreadyInGameException
+                            ? "You're already in a game."
+                            : error.getMessage());
                 });
     }
 }

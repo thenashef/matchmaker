@@ -16,11 +16,12 @@ public class ClientMain extends Application {
     private static final int JMS_PORT = 61616;
 
     private RmiJmsServerConnection serverConnection;
+    private GameClientService gameClientService;
 
     @Override
     public void start(Stage primaryStage) {
         serverConnection = new RmiJmsServerConnection(SERVER_HOST, RMI_PORT, JMS_PORT);
-        GameClientService gameClientService = new GameClientService(serverConnection);
+        gameClientService = new GameClientService(serverConnection);
         SceneNavigator navigator = new SceneNavigator(primaryStage);
 
         LoginController controller = navigator.show("LoginView.fxml", "MatchMaker - Login");
@@ -29,6 +30,11 @@ public class ClientMain extends Application {
 
     @Override
     public void stop() {
+        // Revoke the token before tearing down the transport it travels over -- shutdown()
+        // needs a working RMI connection to call logout().
+        if (gameClientService != null) {
+            gameClientService.shutdown();
+        }
         if (serverConnection != null) {
             serverConnection.close();
         }

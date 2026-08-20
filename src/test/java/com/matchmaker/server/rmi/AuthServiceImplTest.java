@@ -3,6 +3,7 @@ package com.matchmaker.server.rmi;
 import com.matchmaker.common.dto.LoginResultDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.exceptions.AuthenticationException;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.InMemoryUserDao;
@@ -80,5 +81,66 @@ class AuthServiceImplTest {
     @Test
     void keepAlive_withInvalidToken_throwsAuthenticationException() throws Exception {
         assertThrows(AuthenticationException.class, () -> authService.keepAlive("bogus-token"));
+    }
+    
+    @Test
+    void register_blankOrMissingUsername_throwsInvalidRegistration() {
+        assertThrows(InvalidRegistrationException.class, () -> authService.register("", "goodpassword"));
+        assertThrows(InvalidRegistrationException.class, () -> authService.register("   ", "goodpassword"));
+        assertThrows(InvalidRegistrationException.class, () -> authService.register(null, "goodpassword"));
+    }
+
+    @Test
+    void register_usernameLongerThanTheColumn_throwsInvalidRegistrationNotASqlError() {
+        // 51 characters against a VARCHAR(50). This used to reach the INSERT as-is and come back
+        // as a DaoException-wrapped SQLException, surfacing in the login screen as a raw RMI
+        // ServerException rather than something a person could act on.
+        String tooLong = "a".repeat(51);
+
+        InvalidRegistrationException thrown = assertThrows(InvalidRegistrationException.class,
+                () -> authService.register(tooLong, "goodpassword"));
+        assertTrue(thrown.getMessage().contains("50"), "the message should say what the limit is");
+    }
+
+    @Test
+    void register_usernameWithSurroundingSpace_throwsInvalidRegistration() {
+        assertThrows(InvalidRegistrationException.class, () -> authService.register(" alice", "goodpassword"));
+        assertThrows(InvalidRegistrationException.class, () -> authService.register("alice ", "goodpassword"));
+    }
+
+    @Test
+    void register_shortPassword_throwsInvalidRegistration() {
+        assertThrows(InvalidRegistrationException.class, () -> authService.register("alice", "12345"));
+        assertThrows(InvalidRegistrationException.class, () -> authService.register("alice", null));
+    }
+
+    @Test
+    void register_passwordBeyondWhatBcryptHashes_throwsInvalidRegistration() {
+        // jbcrypt silently ignores everything past 72 bytes, so accepting a longer one would
+        // quietly authenticate anybody who knew only the first 72.
+        assertThrows(InvalidRegistrationException.class,
+                () -> authService.register("alice", "x".repeat(73)));
+    }
+
+    @Test
+    void register_validCredentials_stillSucceeds() throws Exception {
+        assertNotNull(authService.register("alice", "goodpassword"));
+    }
+
+    @Test
+    void logout_makesTheTokenUnusableForSubsequentCalls() throws Exception {
+        authService.register("alice", "goodpassword");
+        String token = authService.login("alice", "goodpassword").getSessionToken();
+        authService.keepAlive(token);
+
+        authService.logout(token);
+
+        assertThrows(AuthenticationException.class, () -> authService.keepAlive(token));
+    }
+
+    @Test
+    void logout_unknownToken_doesNotThrow() {
+        // Called from client shutdown, where an already-expired token is the expected case.
+        assertDoesNotThrow(() -> authService.logout("never-issued"));
     }
 }

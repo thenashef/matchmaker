@@ -6,6 +6,8 @@ import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.exceptions.AuthenticationException;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
@@ -25,6 +27,8 @@ public class InMemoryServerConnection implements ServerConnection {
     private AuthenticationException loginFailure;
     private UserDTO registerResult;
     private UsernameTakenException registerFailure;
+    private AlreadyInGameException joinQueueFailure;
+    private final List<String> loggedOutTokens = new ArrayList<>();
     private List<GameTypeDTO> gameTypes = new ArrayList<>();
     private GameStateDTO joinQueueResult;
     private boolean cancelQueueCalled = false;
@@ -45,6 +49,8 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setRegisterFailure(UsernameTakenException failure) { this.registerFailure = failure; }
     public void setGameTypes(List<GameTypeDTO> gameTypes) { this.gameTypes = gameTypes; }
     public void setJoinQueueResult(GameStateDTO result) { this.joinQueueResult = result; }
+    public void setJoinQueueFailure(AlreadyInGameException failure) { this.joinQueueFailure = failure; }
+    public List<String> loggedOutTokens() { return loggedOutTokens; }
     public void setMakeMoveResult(GameStateDTO result) { this.makeMoveResult = result; }
     public void setMakeMoveFailure(IllegalMoveException failure) { this.makeMoveFailure = failure; }
     public void setLegalContinuationsResult(List<String> result) { this.legalContinuationsResult = result; }
@@ -55,7 +61,8 @@ public class InMemoryServerConnection implements ServerConnection {
     public String lastKeepAliveToken() { return lastKeepAliveToken; }
 
     @Override
-    public UserDTO register(String username, String password) throws UsernameTakenException {
+    public UserDTO register(String username, String password)
+            throws UsernameTakenException, InvalidRegistrationException {
         if (registerFailure != null) throw registerFailure;
         return registerResult;
     }
@@ -64,6 +71,11 @@ public class InMemoryServerConnection implements ServerConnection {
     public LoginResultDTO login(String username, String password) throws AuthenticationException {
         if (loginFailure != null) throw loginFailure;
         return loginResult;
+    }
+
+    @Override
+    public void logout(String sessionToken) {
+        loggedOutTokens.add(sessionToken);
     }
 
     @Override
@@ -78,7 +90,8 @@ public class InMemoryServerConnection implements ServerConnection {
     }
 
     @Override
-    public GameStateDTO joinQueue(String sessionToken, int gameTypeId) {
+    public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws AlreadyInGameException {
+        if (joinQueueFailure != null) throw joinQueueFailure;
         return joinQueueResult;
     }
 

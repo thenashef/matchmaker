@@ -2,6 +2,7 @@ package com.matchmaker.server.matchmaking;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.server.TestDatabase;
 import com.matchmaker.server.dao.DataSourceFactory;
 import com.matchmaker.server.dao.GameSessionDao;
@@ -156,6 +157,36 @@ class MatchmakingQueueTest {
     }
 
     @Test
+    void join_callerAlreadyInAnActiveSession_throwsAlreadyInGameException() throws Exception {
+        // The "one slot per user" guard below only ever consulted the MatchmakingQueue table, so
+        // a player with a game in progress could queue again and be paired into a second,
+        // concurrent session -- leaving the first to run its turn timer down to a loss.
+        int aliceId = insertUser("alice");
+        int bobId = insertUser("bob");
+        insertGameSession(gameTypeId, aliceId, bobId, "ACTIVE", null);
+        int carolId = insertUser("carol");
+
+        assertThrows(AlreadyInGameException.class,
+                () -> matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD));
+        assertEquals(0, countQueueRows(), "the rejected join must not leave a queue row behind");
+
+        // ...and nobody gets matched against her on a later join either.
+        assertNull(matchmakingQueue.join(carolId, gameTypeId, INITIAL_BOARD));
+        assertEquals(1, countQueueRows());
+    }
+
+    @Test
+    void join_callerOnlyInAFinishedSession_isAllowedToQueueAgain() throws Exception {
+        // Only ACTIVE sessions block: a player whose last game ended must be free to play again.
+        int aliceId = insertUser("alice");
+        int bobId = insertUser("bob");
+        insertGameSession(gameTypeId, aliceId, bobId, "FINISHED", aliceId);
+
+        assertNull(matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD));
+        assertEquals(1, countQueueRows());
+    }
+
+    @Test
     void cancel_removesWaitingRow() throws Exception {
         int aliceId = insertUser("alice");
         matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
@@ -259,6 +290,32 @@ class MatchmakingQueueTest {
         try (Connection conn = DATA_SOURCE.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, username);
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    /** Writes a session row directly, so a test can set up "this player is already playing." */
+    private int insertGameSession(int gameTypeId, int player1Id, int player2Id, String status, Integer winnerId)
+            throws Exception {
+        String sql = "INSERT INTO GameSession "
+                + "(GameTypeID, Player1ID, Player2ID, Status, WinnerID, BoardState, TurnStartedAt, StartTime) "
+                + "VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setString(4, status);
+            if (winnerId == null) {
+                stmt.setNull(5, java.sql.Types.INTEGER);
+            } else {
+                stmt.setInt(5, winnerId);
+            }
+            stmt.setString(6, INITIAL_BOARD);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();

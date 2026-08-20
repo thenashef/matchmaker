@@ -1,6 +1,8 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
+import com.matchmaker.common.exceptions.UsernameTakenException;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -52,8 +54,21 @@ public class LoginController {
                 error -> {
                     setControlsDisabled(false);
                     statusLabel.setTextFill(Color.web("#b00020"));
-                    statusLabel.setText(error.getMessage());
+                    statusLabel.setText(friendlyRegisterErrorMessage(error));
                 });
+    }
+
+    /**
+     * The server validates registration itself, so an over-long username no longer reaches the
+     * VARCHAR(50) column and come back as a wrapped SQLException -- which is what used to put a
+     * raw RMI ServerException in this label. Both expected failures carry a message written for
+     * a person; anything else gets a generic line rather than a stack trace's toString().
+     */
+    private static String friendlyRegisterErrorMessage(Throwable error) {
+        if (error instanceof InvalidRegistrationException || error instanceof UsernameTakenException) {
+            return error.getMessage();
+        }
+        return "Registration failed -- please try again.";
     }
 
     private void setControlsDisabled(boolean disabled) {

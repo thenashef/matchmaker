@@ -5,8 +5,10 @@ import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
 import com.matchmaker.common.dto.UserDTO;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotParticipantException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
@@ -66,7 +68,8 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     @Override
-    public UserDTO register(String username, String password) throws UsernameTakenException {
+    public UserDTO register(String username, String password)
+            throws UsernameTakenException, InvalidRegistrationException {
         try {
             return authService.register(username, password);
         } catch (RemoteException e) {
@@ -95,6 +98,17 @@ public class RmiJmsServerConnection implements ServerConnection {
         }
     }
 
+@Override
+    public void logout(String sessionToken) {
+        try {
+            authService.logout(sessionToken);
+        } catch (RemoteException e) {
+            // Called from client shutdown, where there is no longer anywhere useful to report
+            // this -- and the token ages out on its own regardless.
+            System.err.println("logout() failed: " + e.getMessage());
+        }
+    }
+
     @Override
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException {
         try {
@@ -105,7 +119,8 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     @Override
-    public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws AuthenticationException {
+    public GameStateDTO joinQueue(String sessionToken, int gameTypeId)
+            throws AuthenticationException, AlreadyInGameException {
         try {
             return playerService.joinQueue(sessionToken, gameTypeId);
         } catch (RemoteException e) {
