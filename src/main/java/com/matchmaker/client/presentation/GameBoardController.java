@@ -24,8 +24,12 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class GameBoardController {
+
+    private static final Logger LOG = Logger.getLogger(GameBoardController.class.getName());
 
     private static final int BOARD_SIZE = 8;
     private static final int TURN_TIMEOUT_SECONDS = 60;
@@ -42,7 +46,7 @@ public class GameBoardController {
             var resource = GameBoardController.class.getResource("turn.wav");
             return resource == null ? null : new AudioClip(resource.toExternalForm());
         } catch (Exception e) {
-            System.err.println("Failed to load turn-notification sound: " + e.getMessage());
+            LOG.log(Level.WARNING, "Failed to load turn-notification sound", e);
             return null;
         }
     }
@@ -152,7 +156,7 @@ public class GameBoardController {
                         return;
                     }
                     highlightsLoading = false;
-                    System.err.println("Failed to refresh legal-move highlights: " + error.getMessage());
+                    LOG.log(Level.WARNING, "Failed to refresh legal-move highlights", error);
                 });
     }
 

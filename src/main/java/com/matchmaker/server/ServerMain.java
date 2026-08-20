@@ -30,8 +30,12 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class ServerMain {
+
+    private static final Logger LOG = Logger.getLogger(ServerMain.class.getName());
 
     public static final int RMI_PORT = 1099;
     public static final int JMS_PORT = 61616;
@@ -132,7 +136,7 @@ public class ServerMain {
             try {
                 action.run();
             } catch (Exception e) {
-                System.err.println("Failed to shut down " + what + ": " + e.getMessage());
+                LOG.log(Level.WARNING, "Failed to shut down " + what, e);
             }
         }
 

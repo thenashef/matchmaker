@@ -19,8 +19,12 @@ import com.matchmaker.server.jms.JmsPublishException;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class AdminServiceImpl extends UnicastRemoteObject implements AdminService {
+
+    private static final Logger LOG = Logger.getLogger(AdminServiceImpl.class.getName());
 
     private final SessionManager sessionManager;
     private final UserDao userDao;
@@ -81,7 +85,7 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
             } catch (JmsPublishException e) {
                 // The DB update already committed -- a failed notification shouldn't fail this
                 // admin call. Mirrors PlayerServiceImpl.makeMove()'s identical handling.
-                System.err.println("Failed to notify session " + gameSessionId + " of force-end: " + e.getMessage());
+                LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of force-end", e);
             }
         });
     }

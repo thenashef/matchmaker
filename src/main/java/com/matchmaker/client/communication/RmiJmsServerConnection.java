@@ -27,8 +27,12 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class RmiJmsServerConnection implements ServerConnection {
+
+    private static final Logger LOG = Logger.getLogger(RmiJmsServerConnection.class.getName());
 
     private final AuthService authService;
     private final PlayerService playerService;
@@ -105,7 +109,7 @@ public class RmiJmsServerConnection implements ServerConnection {
         } catch (RemoteException e) {
             // Called from client shutdown, where there is no longer anywhere useful to report
             // this -- and the token ages out on its own regardless.
-            System.err.println("logout() failed: " + e.getMessage());
+            LOG.log(Level.WARNING, "logout() failed", e);
         }
     }
 
@@ -174,7 +178,7 @@ public class RmiJmsServerConnection implements ServerConnection {
         try {
             jmsConnection.close();
         } catch (JMSException e) {
-            System.err.println("Failed to close JMS connection: " + e.getMessage());
+            LOG.log(Level.WARNING, "Failed to close JMS connection", e);
         }
     }
 
@@ -189,14 +193,14 @@ public class RmiJmsServerConnection implements ServerConnection {
                     GameEventDTO event = (GameEventDTO) ((ObjectMessage) message).getObject();
                     listener.onEvent(event);
                 } catch (JMSException e) {
-                    System.err.println("Failed to read a JMS event: " + e.getMessage());
+                    LOG.log(Level.WARNING, "Failed to read a JMS event", e);
                 }
             });
             return () -> {
                 try {
                     consumer.close();
                 } catch (JMSException e) {
-                    System.err.println("Failed to close a JMS subscription: " + e.getMessage());
+                    LOG.log(Level.WARNING, "Failed to close a JMS subscription", e);
                 }
             };
         } catch (JMSException e) {

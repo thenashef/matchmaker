@@ -24,8 +24,12 @@ import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerService {
+
+    private static final Logger LOG = Logger.getLogger(PlayerServiceImpl.class.getName());
 
     private final SessionManager sessionManager;
     private final GameSessionDao gameSessionDao;
@@ -71,7 +75,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                 // Caller isn't either participant in the session MatchmakingQueue.join() handed
                 // back -- that's a bug elsewhere, not something to guess an opponent for.
                 opponentUserId = null;
-                System.err.println("joinQueue: matched session " + result.getSessionId()
+                LOG.log(Level.WARNING, "joinQueue: matched session " + result.getSessionId()
                         + " does not include caller " + userId + " as either player -- skipping opponent notification");
             }
 
@@ -82,7 +86,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                 } catch (JmsPublishException e) {
                     // The pairing already committed to the DB -- a failed notification to the
                     // *other* player shouldn't fail this caller's own, already-successful result.
-                    System.err.println("Failed to notify opponent " + opponentUserId + " of match: " + e.getMessage());
+                    LOG.log(Level.WARNING, "Failed to notify opponent " + opponentUserId + " of match", e);
                 }
             }
         }
@@ -149,7 +153,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         } catch (JmsPublishException e) {
             // The move already committed to the DB -- a failed notification shouldn't undo or
             // fail the mover's own already-successful result. Mirrors joinQueue()'s handling.
-            System.err.println("Failed to notify session " + gameSessionId + " of move: " + e.getMessage());
+            LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of move", e);
         }
 
         return persistedSession;

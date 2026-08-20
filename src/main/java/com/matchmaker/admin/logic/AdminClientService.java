@@ -15,8 +15,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class AdminClientService {
+
+    private static final Logger LOG = Logger.getLogger(AdminClientService.class.getName());
 
     private final AdminConnection adminConnection;
     private final Duration keepAliveInterval;
@@ -128,7 +132,7 @@ public class AdminClientService {
             try {
                 adminConnection.keepAlive(sessionToken);
             } catch (Exception e) {
-                System.err.println("keepAlive failed: " + e.getMessage());
+                LOG.log(Level.WARNING, "keepAlive failed", e);
             }
         }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }

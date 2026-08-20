@@ -14,8 +14,12 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class SessionWatchdog {
+
+    private static final Logger LOG = Logger.getLogger(SessionWatchdog.class.getName());
 
     private final SessionManager sessionManager;
     private final GameSessionDao gameSessionDao;
@@ -64,7 +68,7 @@ public class SessionWatchdog {
             // stop scheduleAtFixedRate from ever running it again.
             sessionManager.evictExpired();
         } catch (Exception e) {
-            System.err.println("SessionWatchdog: failed to evict expired sessions: " + e.getMessage());
+            LOG.log(Level.WARNING, "SessionWatchdog: failed to evict expired sessions", e);
         }
 
         List<GameStateDTO> activeSessions;
@@ -74,7 +78,7 @@ public class SessionWatchdog {
             // A transient DB failure must not escape this method -- scheduleAtFixedRate silently
             // stops running a task forever the first time it throws, which would permanently and
             // invisibly kill all disconnect/turn-timeout detection for the rest of the process.
-            System.err.println("SessionWatchdog: failed to list active sessions: " + e.getMessage());
+            LOG.log(Level.WARNING, "SessionWatchdog: failed to list active sessions", e);
             return;
         }
         for (GameStateDTO session : activeSessions) {
@@ -83,8 +87,7 @@ public class SessionWatchdog {
             } catch (Exception e) {
                 // One bad session (e.g. an unexpected DB state) must not prevent every other
                 // session in this same tick from being checked.
-                System.err.println("SessionWatchdog: failed to check session " + session.getSessionId()
-                        + ": " + e.getMessage());
+                LOG.log(Level.WARNING, "SessionWatchdog: failed to check session " + session.getSessionId(), e);
             }
         }
     }
@@ -143,7 +146,7 @@ public class SessionWatchdog {
         } catch (JmsPublishException e) {
             // The abandon already committed to the DB -- a failed notification shouldn't undo
             // it. Mirrors PlayerServiceImpl.makeMove()'s and joinQueue()'s identical handling.
-            System.err.println("Failed to notify session " + sessionId + " of abandonment: " + e.getMessage());
+            LOG.log(Level.WARNING, "Failed to notify session " + sessionId + " of abandonment", e);
         }
     }
 }
