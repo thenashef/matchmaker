@@ -40,7 +40,13 @@ public class ServerMain {
     private static final Duration WATCHDOG_TICK_INTERVAL = Duration.ofSeconds(5);
 
     public static void main(String[] args) throws Exception {
-        start(RMI_PORT, JMS_PORT);
+        Started started = startWithImpls(RMI_PORT, JMS_PORT);
+
+        // main() blocks forever below, so without this nothing ever runs on the way out: the
+        // broker, its connection and the Hikari pool were all left to die with the process.
+        // Registered only here, not in startWithImpls(), because tests construct and tear down
+        // their own instances and must not accumulate a hook per test.
+        Runtime.getRuntime().addShutdownHook(new Thread(started::close, "server-shutdown"));
 
         System.out.println("MatchMaker RMI registry started on port " + RMI_PORT);
         System.out.println("Bound services: AuthService, PlayerService, AdminService");
@@ -99,10 +105,40 @@ public class ServerMain {
                 sessionManager, gameSessionDao, gameEventPublisher, DISCONNECT_TIMEOUT, TURN_TIMEOUT);
         sessionWatchdog.start(WATCHDOG_TICK_INTERVAL);
 
-        return new Started(jmsBroker, registry, authService, playerService, adminService, sessionWatchdog);
+        return new Started(jmsBroker, jmsConnection, dataSource, registry, authService, playerService,
+                adminService, sessionWatchdog);
     }
 
-    record Started(BrokerService jmsBroker, Registry registry, AuthServiceImpl authService,
-                    PlayerServiceImpl playerService, AdminServiceImpl adminService, SessionWatchdog sessionWatchdog) {
+    record Started(BrokerService jmsBroker, Connection jmsConnection, DataSource dataSource, Registry registry,
+                    AuthServiceImpl authService, PlayerServiceImpl playerService, AdminServiceImpl adminService,
+                    SessionWatchdog sessionWatchdog) {
+
+        /**
+         * Releases everything {@link #startWithImpls} acquired, in reverse order: stop accepting
+         * work, then close the transport, then the broker, then the pool. Each step is guarded
+         * so that one failure can't skip the rest -- a shutdown hook that throws part-way is
+         * worse than no shutdown hook at all.
+         */
+        void close() {
+            closing("session watchdog", sessionWatchdog::stop);
+            closing("JMS connection", jmsConnection::close);
+            closing("JMS broker", jmsBroker::stop);
+            if (dataSource instanceof AutoCloseable closeablePool) {
+                closing("database pool", closeablePool::close);
+            }
+        }
+
+        private static void closing(String what, ThrowingRunnable action) {
+            try {
+                action.run();
+            } catch (Exception e) {
+                System.err.println("Failed to shut down " + what + ": " + e.getMessage());
+            }
+        }
+
+        @FunctionalInterface
+        private interface ThrowingRunnable {
+            void run() throws Exception;
+        }
     }
 }

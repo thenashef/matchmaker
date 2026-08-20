@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,11 +26,17 @@ public class JdbcUserDao implements UserDao {
     public Optional<UserRecord> insert(String username, String passwordHash) {
         String sql = "INSERT INTO User (Username, Password) VALUES (?, ?)";
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, username);
             stmt.setString(2, passwordHash);
             stmt.executeUpdate();
-            return findByUsername(username);
+            // Reading the row back through findByUsername() would check a second connection
+            // out of the pool while this one is still held. JdbcGameTypeDao.insert() already
+            // uses the generated key instead; this now matches.
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return findById(conn, keys.getInt(1));
+            }
         } catch (SQLIntegrityConstraintViolationException e) {
             if (e.getErrorCode() == MYSQL_DUPLICATE_ENTRY_ERROR_CODE) {
                 return Optional.empty();
@@ -90,6 +97,18 @@ public class JdbcUserDao implements UserDao {
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to list users", e);
+        }
+    }
+
+    /** Same query as {@link #findById(int)}, but on a caller-supplied connection. */
+    private Optional<UserRecord> findById(Connection conn, int id) throws SQLException {
+        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+                + "FROM User WHERE ID = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? Optional.of(mapRow(rs)) : Optional.empty();
+            }
         }
     }
 

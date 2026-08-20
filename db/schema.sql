@@ -46,6 +46,11 @@ CREATE TABLE Move (
     MoveNumber INT NOT NULL,
     Payload TEXT NOT NULL,
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- MoveNumber is computed as MAX(MoveNumber) + 1 inside recordMove()'s transaction, which is
+    -- safe today only because the guarded session UPDATE that follows rejects the loser of any
+    -- race. Nothing in the schema enforced it, so a future writer that doesn't go through
+    -- recordMove() could silently produce duplicate move numbers for a session.
+    UNIQUE KEY uq_move_session_number (SessionID, MoveNumber),
     FOREIGN KEY (SessionID) REFERENCES GameSession(ID),
     FOREIGN KEY (UserID) REFERENCES User(ID)
 );
@@ -54,6 +59,9 @@ CREATE TABLE MatchmakingQueue (
     ID INT AUTO_INCREMENT PRIMARY KEY,
     UserID INT NOT NULL,
     GameTypeID INT NOT NULL,
+    -- Only 'WAITING' is ever written: cancel() and the pairing path both DELETE the row
+    -- rather than transitioning it, so MATCHED/CANCELLED are vestigial. Left in place because
+    -- narrowing the ENUM would need an ALTER against live data for no behavioural gain.
     Status ENUM('WAITING','MATCHED','CANCELLED') NOT NULL DEFAULT 'WAITING',
     JoinedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (UserID) REFERENCES User(ID),
@@ -142,6 +150,11 @@ CREATE TABLE Move (
     MoveNumber INT NOT NULL,
     Payload TEXT NOT NULL,
     CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- MoveNumber is computed as MAX(MoveNumber) + 1 inside recordMove()'s transaction, which is
+    -- safe today only because the guarded session UPDATE that follows rejects the loser of any
+    -- race. Nothing in the schema enforced it, so a future writer that doesn't go through
+    -- recordMove() could silently produce duplicate move numbers for a session.
+    UNIQUE KEY uq_move_session_number (SessionID, MoveNumber),
     FOREIGN KEY (SessionID) REFERENCES GameSession(ID),
     FOREIGN KEY (UserID) REFERENCES User(ID)
 );
@@ -150,6 +163,9 @@ CREATE TABLE MatchmakingQueue (
     ID INT AUTO_INCREMENT PRIMARY KEY,
     UserID INT NOT NULL,
     GameTypeID INT NOT NULL,
+    -- Only 'WAITING' is ever written: cancel() and the pairing path both DELETE the row
+    -- rather than transitioning it, so MATCHED/CANCELLED are vestigial. Left in place because
+    -- narrowing the ENUM would need an ALTER against live data for no behavioural gain.
     Status ENUM('WAITING','MATCHED','CANCELLED') NOT NULL DEFAULT 'WAITING',
     JoinedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (UserID) REFERENCES User(ID),

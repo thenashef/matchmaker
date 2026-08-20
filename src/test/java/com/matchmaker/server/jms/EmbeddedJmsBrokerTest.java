@@ -26,6 +26,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EmbeddedJmsBrokerTest {
@@ -219,6 +220,34 @@ class EmbeddedJmsBrokerTest {
                 serviceSession.createTextMessage("legitimate"));
 
         assertNotNull(consumer.receive(2000), "the send() check must not lock out the server's own publisher");
+    }
+
+    @Test
+    void advisoryTopicsCarryNothingForAPlayerToHarvest() throws Exception {
+        // JmsSecurityPlugin has to let any authenticated connection consume ActiveMQ.Advisory.>,
+        // because the client library subscribes to advisories itself and denying them breaks
+        // connecting outright. That left a logged-in player able to watch broker-wide advisories
+        // -- who is connected, which destinations exist. The broker no longer publishes them at
+        // all, so subscribing still succeeds but yields nothing.
+        int snooper = registerUser("snooper");
+        String token = sessionManager.createSession(snooper);
+        Session snooperSession = userConnection(snooper, token).createSession(false, Session.AUTO_ACKNOWLEDGE);
+        MessageConsumer advisories =
+                snooperSession.createConsumer(snooperSession.createTopic("ActiveMQ.Advisory.Connection"));
+
+        // Generate exactly the activity that would have produced an advisory: a new connection,
+        // a new consumer and a real publish.
+        int other = registerUser("other");
+        gameSessionDao.addActiveSession(
+                new GameStateDTO(31, 1, other, snooper, GameStatus.ACTIVE, other, null, "{\"pieces\":{}}"));
+        Session otherSession = userConnection(other, sessionManager.createSession(other))
+                .createSession(false, Session.AUTO_ACKNOWLEDGE);
+        otherSession.createConsumer(otherSession.createTopic("session.31.events"));
+        new ActiveMqGameEventPublisher(serviceConnection().createSession(false, Session.AUTO_ACKNOWLEDGE))
+                .publishToSession(31, new GameEventDTO(GameEventType.MOVE_MADE, 31,
+                        new GameStateDTO(31, 1, other, snooper, GameStatus.ACTIVE, snooper, null, "{\"pieces\":{}}")));
+
+        assertNull(advisories.receive(500), "advisory traffic should not be observable by a player");
     }
 
     private int registerUser(String username) {

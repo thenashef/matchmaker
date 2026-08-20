@@ -60,6 +60,11 @@ public class GameBoardController {
     private final List<String> selectedPath = new ArrayList<>();
     private Set<String> highlightedSquares = Set.of();
     private boolean highlightsLoading = false;
+    // Bumped whenever anything invalidates an in-flight legalContinuations query -- a new
+    // authoritative state arriving, or the selection changing. A response carrying a stale id is
+    // dropped rather than allowed to repaint the board it was computed against. Distinct from
+    // highlightsLoading, which locks *clicks* out during the gap; this one discards *answers*.
+    private int highlightRequestId;
     private Timeline turnCountdown;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
@@ -74,6 +79,9 @@ public class GameBoardController {
         selectedPath.clear();
         // A fresh, authoritative state has arrived -- any in-flight highlight/submit lock from
         // before this point is moot now, whatever it was guarding against is already resolved.
+        // Bumping the id here is what makes that true for a query that has already been sent
+        // and is still on its way back.
+        highlightRequestId++;
         highlightsLoading = false;
         updateColorIndicator();
         renderBoard(state);
@@ -108,11 +116,18 @@ public class GameBoardController {
      *  said it was legal, that means selectedPath is now a complete, legal move, and it's
      *  auto-submitted immediately rather than waiting for a separate "Submit" action. */
     private void refreshHighlights() {
+        int requestId = ++highlightRequestId;
         highlightsLoading = true;
         JSONObject payload = new JSONObject();
         payload.put("path", new JSONArray(selectedPath));
         gameClientService.legalContinuations(currentState.getSessionId(), payload.toString(),
                 continuations -> {
+                    // Superseded while this was in flight: the board it describes no longer
+                    // exists. Applying it anyway would paint highlights from the previous
+                    // position -- most visibly, legal-looking moves on a game that just ended.
+                    if (requestId != highlightRequestId) {
+                        return;
+                    }
                     if (continuations.isEmpty() && selectedPath.size() >= 2) {
                         // Deliberately leaving highlightsLoading == true here rather than
                         // resetting it -- clicks need to stay locked out through the submit that's
@@ -133,6 +148,9 @@ public class GameBoardController {
                     renderBoard(currentState);
                 },
                 error -> {
+                    if (requestId != highlightRequestId) {
+                        return;
+                    }
                     highlightsLoading = false;
                     System.err.println("Failed to refresh legal-move highlights: " + error.getMessage());
                 });
