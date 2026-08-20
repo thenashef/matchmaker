@@ -13,15 +13,17 @@ public class InMemoryMatchmakingQueue implements MatchmakingQueue {
     private final AtomicInteger nextSessionId = new AtomicInteger(1);
 
     @Override
-    public synchronized GameStateDTO join(int userId, int gameTypeId) {
+    public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState) {
         Integer opponentUserId = waitingUserIdByGameTypeId.get(gameTypeId);
         if (opponentUserId == null) {
             waitingUserIdByGameTypeId.put(gameTypeId, userId);
             return null;
         }
         waitingUserIdByGameTypeId.remove(gameTypeId);
+        // Mirrors JdbcMatchmakingQueue: the caller's opening position is stored on the new
+        // session, so a matched session never carries a null board.
         return new GameStateDTO(nextSessionId.getAndIncrement(), gameTypeId, opponentUserId, userId,
-                GameStatus.ACTIVE, opponentUserId, null, null);
+                GameStatus.ACTIVE, opponentUserId, null, initialBoardState);
     }
 
     @Override

@@ -104,10 +104,9 @@ class PlayerServiceImplTest {
 
     @Test
     void joinQueue_opponentWaiting_returnedStateHasARealBoardNotNull() throws Exception {
-        // InMemoryMatchmakingQueue.join() mirrors JdbcMatchmakingQueue.join() in never setting
-        // BoardState -- joinQueue() must fall back to gameEngine.initialState() itself, the same
-        // way makeMove() already does, since the client needs a real board to render the instant
-        // it's matched, before any move has happened.
+        // joinQueue() hands gameEngine.initialState() to the queue, which stores it on the new
+        // session -- so the board is real from the moment the session exists, rather than being
+        // patched in on the way out. The client needs one to render the instant it's matched.
         String otherToken = sessionManager.createSession(2);
         playerService.joinQueue(otherToken, 1);
 
@@ -203,12 +202,19 @@ class PlayerServiceImplTest {
     }
 
     @Test
-    void makeMove_freshlyMatchedSessionWithNullBoardState_fallsBackToInitialBoardStateAndSucceeds() throws Exception {
-        // Mirrors what JdbcMatchmakingQueue.join() actually creates -- BoardState is never
-        // set at match time, so a freshly-matched session's board is null in the DB.
-        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, null));
+    void makeMove_onAFreshlyMatchedSession_playsOffTheStoredOpeningBoard() throws Exception {
+        // The first move of a game used to be a special case: matchmaking left BoardState null,
+        // so makeMove() had to substitute gameEngine.initialState() before it could validate
+        // anything. The session now carries the opening position from creation, so this goes
+        // through the ordinary path -- and, unlike the old fallback, the board the move is
+        // applied to is the one actually stored on the row rather than one reconstructed here.
+        // sessionToken (user 1) queues first, so they become player1 and hold the opening turn.
+        playerService.joinQueue(sessionToken, 1);
+        GameStateDTO matched = playerService.joinQueue(sessionManager.createSession(2), 1);
+        gameSessionDao.addActiveSession(matched);
 
-        GameStateDTO result = playerService.makeMove(sessionToken, 1, "{\"path\":[\"b3\",\"a4\"]}");
+        GameStateDTO result = playerService.makeMove(sessionToken, matched.getSessionId(),
+                "{\"path\":[\"b3\",\"a4\"]}");
 
         assertEquals(2, result.getCurrentTurnUserId());
         assertNotEquals(new CheckersEngine().initialState(), result.getBoardState());
@@ -290,10 +296,15 @@ class PlayerServiceImplTest {
     }
 
     @Test
-    void legalContinuations_freshlyMatchedSessionWithNullBoardState_fallsBackToInitialBoardState() throws Exception {
-        gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, null));
+    void legalContinuations_onAFreshlyMatchedSession_readsTheStoredOpeningBoard() throws Exception {
+        // Was a null-board fallback case; matchmaking now stores the opening position on the
+        // session, so this is just the ordinary path reading a real board off the row.
+        playerService.joinQueue(sessionToken, 1);
+        GameStateDTO matched = playerService.joinQueue(sessionManager.createSession(2), 1);
+        gameSessionDao.addActiveSession(matched);
 
-        List<String> result = playerService.legalContinuations(sessionToken, 1, "{\"path\":[]}");
+        List<String> result = playerService.legalContinuations(sessionToken, matched.getSessionId(),
+                "{\"path\":[]}");
 
         assertTrue(result.contains("{\"path\":[\"b3\"]}"));
     }

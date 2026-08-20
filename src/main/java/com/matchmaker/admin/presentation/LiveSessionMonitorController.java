@@ -19,6 +19,8 @@ public class LiveSessionMonitorController {
 
     private static final int BOARD_SIZE = 8;
     private static final int CELL_SIZE = 50;
+    /** Last-resort stand-in for a session row written before board state was set at creation. */
+    private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
 
     @FXML private Label titleLabel;
     @FXML private Label detailLabel;
@@ -60,7 +62,11 @@ public class LiveSessionMonitorController {
 
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
-        JSONObject board = new JSONObject(state.getBoardState());
+        // See the identical guard in the player client's GameBoardController: sessions carry a
+        // real board from creation now, so this only covers rows written before that change --
+        // but clicking Monitor on one used to throw straight out of init() and leave the screen
+        // half-drawn, which is a poor trade for one defensive check.
+        JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
         JSONObject pieces = board.getJSONObject("pieces");
 
         for (int row = 0; row < BOARD_SIZE; row++) {

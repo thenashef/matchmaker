@@ -137,6 +137,47 @@ class GameSessionDaoTest {
     }
 
     @Test
+    void recordMove_gameEndingInADraw_recordsDrawsForBothAndDoesNotThrow() throws Exception {
+        // A FINISHED session with a null winner is exactly what PlayerServiceImpl.makeMove()
+        // builds for GameResult.DRAW. recordMove() used to unbox that null into an int, and the
+        // resulting NullPointerException escaped the SQLException-only catch -- past the finally,
+        // whose setAutoCommit(true) then committed the half-written transaction. The row ended up
+        // FINISHED with the move recorded but no ratings applied, and the caller got an NPE.
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        int player1RatingBefore = ratingOf(player1Id);
+
+        GameStateDTO drawn = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.FINISHED, null, null, "{\"rows\":8,\"cols\":8,\"pieces\":{}}");
+
+        GameStateDTO result = gameSessionDao.recordMove(drawn, player1Id, "{\"path\":[\"g7\",\"h8\"]}");
+
+        assertEquals(GameStatus.FINISHED, result.getStatus());
+        assertNull(result.getWinnerId());
+        assertEquals(1, drawsOf(player1Id));
+        assertEquals(1, drawsOf(player2Id));
+        assertEquals(0, winsOf(player1Id), "a draw is not a win for anyone");
+        assertEquals(0, lossesOf(player2Id), "a draw is not a loss for anyone");
+        // Equal ratings going in means a score of 0.5 is exactly the expected result, so neither
+        // player's rating should move.
+        assertEquals(player1RatingBefore, ratingOf(player1Id));
+    }
+
+    @Test
+    void recordMove_concurrentUpdate_stillSurfacesAsConcurrentGameUpdateException() throws Exception {
+        // Guard for the widened catch in recordMove(): ConcurrentGameUpdateException is itself a
+        // RuntimeException, so catching RuntimeException without re-throwing this one first would
+        // bury an expected race outcome inside a DaoException -- and cost PlayerServiceImpl its
+        // translation to NotYourTurnException.
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        GameStateDTO staleTurn = new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player1Id, null, "{\"rows\":8,\"cols\":8,\"pieces\":{}}");
+
+        // player2 is not the current turn holder, so the guarded UPDATE matches zero rows.
+        assertThrows(ConcurrentGameUpdateException.class,
+                () -> gameSessionDao.recordMove(staleTurn, player2Id, "{\"path\":[\"g7\",\"h8\"]}"));
+    }
+
+    @Test
     void findAllActive_returnsOnlyActiveSessions() throws Exception {
         int activeSessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
         insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
@@ -292,6 +333,17 @@ class GameSessionDaoTest {
     private int winsOf(int userId) throws Exception {
         try (Connection conn = DATA_SOURCE.getConnection();
              PreparedStatement stmt = conn.prepareStatement("SELECT Wins FROM User WHERE ID = ?")) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private int drawsOf(int userId) throws Exception {
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement("SELECT Draws FROM User WHERE ID = ?")) {
             stmt.setInt(1, userId);
             try (ResultSet rs = stmt.executeQuery()) {
                 rs.next();

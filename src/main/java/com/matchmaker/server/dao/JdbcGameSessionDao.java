@@ -257,15 +257,35 @@ public class JdbcGameSessionDao implements GameSessionDao {
                 }
 
                 if (gameEnded) {
-                    int winnerId = updatedSession.getWinnerId();
-                    int loserId = (updatedSession.getPlayer1Id() == winnerId)
-                            ? updatedSession.getPlayer2Id() : updatedSession.getPlayer1Id();
-                    applyEloAndRecordResult(conn, winnerId, loserId);
+                    // A finished game does not necessarily have a winner: GameResult.DRAW makes
+                    // PlayerServiceImpl.makeMove() build exactly this state, FINISHED with a null
+                    // winner. Unboxing it into an int threw a NullPointerException that the
+                    // SQLException-only catch below didn't cover, so it escaped straight past
+                    // the finally -- where setAutoCommit(true) commits whatever is in flight per
+                    // the JDBC spec. The move row and the FINISHED status committed; the ratings
+                    // never did; and the caller got an NPE instead of a result.
+                    Integer winnerId = updatedSession.getWinnerId();
+                    if (winnerId == null) {
+                        applyDrawResult(conn, updatedSession.getPlayer1Id(), updatedSession.getPlayer2Id());
+                    } else {
+                        int loserId = (updatedSession.getPlayer1Id() == winnerId)
+                                ? updatedSession.getPlayer2Id() : updatedSession.getPlayer1Id();
+                        applyEloAndRecordResult(conn, winnerId, loserId);
+                    }
                 }
 
                 conn.commit();
                 return updatedSession;
-            } catch (SQLException e) {
+            } catch (ConcurrentGameUpdateException e) {
+                // Deliberately ahead of the catch below, which would otherwise swallow this into
+                // a DaoException and cost makeMove() its translation to NotYourTurnException.
+                // It is an expected race outcome, not a failure, and it already rolled back at
+                // its throw site -- so it passes straight through untouched.
+                throw e;
+            } catch (SQLException | RuntimeException e) {
+                // RuntimeException as well as SQLException, for the reason spelled out in
+                // abandon() below: without it an unexpected failure part-way through skips the
+                // rollback and reaches the finally, which commits the half-written transaction.
                 conn.rollback();
                 throw new DaoException("Failed to record move for session " + updatedSession.getSessionId(), e);
             } finally {
@@ -307,6 +327,32 @@ public class JdbcGameSessionDao implements GameSessionDao {
             updateLoser.setInt(1, newLoserRating);
             updateLoser.setInt(2, loserId);
             updateLoser.executeUpdate();
+        }
+    }
+
+    /**
+     * The drawn-game counterpart to {@link #applyEloAndRecordResult}: both players score 0.5
+     * rather than 1/0, which moves the lower-rated player up and the higher-rated one down by
+     * the same amount, and both get a Draw rather than a Win and a Loss.
+     */
+    private void applyDrawResult(Connection conn, int player1Id, int player2Id) throws SQLException {
+        int player1Rating = ratingOf(conn, player1Id);
+        int player2Rating = ratingOf(conn, player2Id);
+
+        double expectedPlayer1 = 1.0 / (1.0 + Math.pow(10, (player2Rating - player1Rating) / 400.0));
+        double expectedPlayer2 = 1.0 / (1.0 + Math.pow(10, (player1Rating - player2Rating) / 400.0));
+        int newPlayer1Rating = player1Rating + (int) Math.round(32 * (0.5 - expectedPlayer1));
+        int newPlayer2Rating = player2Rating + (int) Math.round(32 * (0.5 - expectedPlayer2));
+
+        try (PreparedStatement updateDraw = conn.prepareStatement(
+                "UPDATE User SET Draws = Draws + 1, Rating = ? WHERE ID = ?")) {
+            updateDraw.setInt(1, newPlayer1Rating);
+            updateDraw.setInt(2, player1Id);
+            updateDraw.executeUpdate();
+
+            updateDraw.setInt(1, newPlayer2Rating);
+            updateDraw.setInt(2, player2Id);
+            updateDraw.executeUpdate();
         }
     }
 

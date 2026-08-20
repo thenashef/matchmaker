@@ -54,20 +54,12 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     @Override
     public GameStateDTO joinQueue(String sessionToken, int gameTypeId) throws RemoteException, AuthenticationException {
         int userId = sessionManager.resolve(sessionToken);
-        GameStateDTO result = matchmakingQueue.join(userId, gameTypeId);
+        // The opening position is handed to the queue rather than patched in afterwards, so the
+        // session row carries a real board from the moment it exists -- for the MATCH_FOUND push
+        // and this return value, but equally for the readers that had no fallback of their own.
+        GameStateDTO result = matchmakingQueue.join(userId, gameTypeId, gameEngine.initialState());
 
         if (result != null) {
-            // JdbcMatchmakingQueue.join() never sets BoardState when creating a match --
-            // makeMove() already falls back to gameEngine.initialState() when it later reads a
-            // null board, but the client needs a real board to render the instant it's matched,
-            // before any move has happened. Apply the same fallback here so neither the
-            // immediate return value nor the MATCH_FOUND push ever carries a null board.
-            if (result.getBoardState() == null) {
-                result = new GameStateDTO(result.getSessionId(), result.getGameTypeId(), result.getPlayer1Id(),
-                        result.getPlayer2Id(), result.getStatus(), result.getCurrentTurnUserId(),
-                        result.getWinnerId(), gameEngine.initialState());
-            }
-
             Integer opponentUserId;
             if (result.getPlayer1Id() == userId) {
                 opponentUserId = result.getPlayer2Id();
@@ -117,12 +109,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
         }
 
-        // Matchmaking creates a session with no BoardState (see JdbcMatchmakingQueue.join())
-        // -- the very first move of a game has nothing to read yet, so fall back to the
-        // engine's starting position rather than passing null through to it.
-        String currentBoardState = session.getBoardState() != null
-                ? session.getBoardState() : gameEngine.initialState();
-
+        String currentBoardState = session.getBoardState();
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
         if (!gameEngine.isLegalMove(currentBoardState, isPlayer1Turn, movePayload)) {
             throw new IllegalMoveException("Illegal move for session " + gameSessionId + ": " + movePayload);
@@ -181,10 +168,8 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
         }
 
-        String currentBoardState = session.getBoardState() != null
-                ? session.getBoardState() : gameEngine.initialState();
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
-        return gameEngine.legalContinuations(currentBoardState, isPlayer1Turn, partialMovePayload);
+        return gameEngine.legalContinuations(session.getBoardState(), isPlayer1Turn, partialMovePayload);
     }
 
     @Override

@@ -60,11 +60,11 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
     }
 
     @Override
-    public synchronized GameStateDTO join(int userId, int gameTypeId) {
+    public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState) {
         try (Connection conn = dataSource.getConnection()) {
             conn.setAutoCommit(false);
             try {
-                GameStateDTO result = pairOrEnqueue(conn, userId, gameTypeId);
+                GameStateDTO result = pairOrEnqueue(conn, userId, gameTypeId, initialBoardState);
                 conn.commit();
                 return result;
             } catch (SQLException e) {
@@ -88,7 +88,8 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         }
     }
 
-    private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId) throws SQLException {
+    private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId, String initialBoardState)
+            throws SQLException {
         // Deliberately NOT scoped by GameTypeID: a user can only ever occupy one
         // queue slot at a time, for one game type, mirroring cancel(int userId)'s
         // "one queue slot per user" model below. Scoping this check by game type as
@@ -149,15 +150,23 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         // JdbcGameSessionDao.recordMove() and currentTurnStartedAt() both trust NOW()/the DB's
         // stored value directly, so this write path has to agree with them on which clock is
         // authoritative rather than risk a JVM-vs-server timezone mismatch on the very first read.
+        // BoardState is written here, at creation, rather than being left null until the first
+        // move lands. A null board is not a state the rest of the system can render: the admin's
+        // live monitor, the watchdog's SESSION_ABANDONED push and an admin force-end all read the
+        // session straight back out and hand it to a client, and every one of them threw on the
+        // null. Two callers used to paper over it with a GameEngine.initialState() fallback; the
+        // other three didn't, which is what made an idle first turn crash the opponent's board.
         String insertSessionSql = "INSERT INTO GameSession "
-                + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, TurnStartedAt, StartTime) "
-                + "VALUES (?, ?, ?, 'ACTIVE', ?, NOW(), NOW())";
+                + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, BoardState, "
+                + "TurnStartedAt, StartTime) "
+                + "VALUES (?, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())";
         int sessionId;
         try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setInt(1, gameTypeId);
             stmt.setInt(2, opponentUserId);
             stmt.setInt(3, userId);
             stmt.setInt(4, opponentUserId);
+            stmt.setString(5, initialBoardState);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();
@@ -172,6 +181,6 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         }
 
         return new GameStateDTO(sessionId, gameTypeId, opponentUserId, userId,
-                GameStatus.ACTIVE, opponentUserId, null, null);
+                GameStatus.ACTIVE, opponentUserId, null, initialBoardState);
     }
 }

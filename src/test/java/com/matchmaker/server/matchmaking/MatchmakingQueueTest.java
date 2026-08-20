@@ -31,6 +31,11 @@ class MatchmakingQueueTest {
 
     private static final DataSource DATA_SOURCE = DataSourceFactory.create();
 
+    // Stands in for whatever GameEngine.initialState() the caller would pass. The queue is
+    // game-agnostic and never parses this -- it only has to store it -- so a recognisable
+    // sentinel makes it obvious in assertions that the value round-tripped unchanged.
+    private static final String INITIAL_BOARD = "{\"rows\":8,\"cols\":8,\"pieces\":{\"a1\":\"b\"}}";
+
     private final MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(DATA_SOURCE);
     private final GameSessionDao gameSessionDao = new JdbcGameSessionDao(DATA_SOURCE);
 
@@ -46,7 +51,7 @@ class MatchmakingQueueTest {
     void join_noOneWaiting_returnsNullAndQueuesCaller() throws Exception {
         int aliceId = insertUser("alice");
 
-        GameStateDTO result = matchmakingQueue.join(aliceId, gameTypeId);
+        GameStateDTO result = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
 
         assertNull(result);
         assertEquals(1, countQueueRows());
@@ -56,9 +61,9 @@ class MatchmakingQueueTest {
     void join_opponentWaiting_returnsMatchedSessionAndClearsQueue() throws Exception {
         int aliceId = insertUser("alice");
         int bobId = insertUser("bob");
-        matchmakingQueue.join(aliceId, gameTypeId);
+        matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
 
-        GameStateDTO result = matchmakingQueue.join(bobId, gameTypeId);
+        GameStateDTO result = matchmakingQueue.join(bobId, gameTypeId, INITIAL_BOARD);
 
         assertNotNull(result);
         assertEquals(gameTypeId, result.getGameTypeId());
@@ -81,11 +86,30 @@ class MatchmakingQueueTest {
     }
 
     @Test
+    void join_opponentWaiting_persistsTheInitialBoardOnTheNewSession() throws Exception {
+        int aliceId = insertUser("alice");
+        int bobId = insertUser("bob");
+        matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
+
+        GameStateDTO result = matchmakingQueue.join(bobId, gameTypeId, INITIAL_BOARD);
+
+        // Returned to the caller...
+        assertEquals(INITIAL_BOARD, result.getBoardState(),
+                "the matched session handed back must carry the opening position, not null");
+        // ...and, more importantly, actually written to the row. Everything that reads the
+        // session back independently -- the admin live monitor, SessionWatchdog's abandon push,
+        // an admin force-end -- used to get a null board here and throw rendering it.
+        assertEquals(INITIAL_BOARD, gameSessionDao.findActiveById(result.getSessionId())
+                        .orElseThrow().getBoardState(),
+                "BoardState must be persisted at creation, not left null until the first move");
+    }
+
+    @Test
     void join_calledTwiceByCaller_doesNotCreateDuplicateRow() throws Exception {
         int aliceId = insertUser("alice");
 
-        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId);
-        GameStateDTO second = matchmakingQueue.join(aliceId, gameTypeId);
+        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
+        GameStateDTO second = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
 
         assertNull(first);
         assertNull(second);
@@ -97,8 +121,8 @@ class MatchmakingQueueTest {
         int chessGameTypeId = insertGameType("Chess");
         int aliceId = insertUser("alice");
 
-        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId);
-        GameStateDTO second = matchmakingQueue.join(aliceId, chessGameTypeId);
+        GameStateDTO first = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
+        GameStateDTO second = matchmakingQueue.join(aliceId, chessGameTypeId, INITIAL_BOARD);
 
         assertNull(first);
         assertNull(second);
@@ -112,13 +136,13 @@ class MatchmakingQueueTest {
         int aliceId = insertUser("alice");
 
         // Bob joins chess: no opponent, Bob is now WAITING for chess.
-        GameStateDTO bobJoin = matchmakingQueue.join(bobId, chessGameTypeId);
+        GameStateDTO bobJoin = matchmakingQueue.join(bobId, chessGameTypeId, INITIAL_BOARD);
         // Alice joins checkers: no opponent, Alice is now WAITING for checkers.
-        GameStateDTO aliceJoinCheckers = matchmakingQueue.join(aliceId, gameTypeId);
+        GameStateDTO aliceJoinCheckers = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
 
         // Alice then joins chess: the opponent lookup would find Bob waiting for chess,
         // but Alice already has a WAITING row (checkers), so this must be a no-op.
-        GameStateDTO aliceJoinChess = matchmakingQueue.join(aliceId, chessGameTypeId);
+        GameStateDTO aliceJoinChess = matchmakingQueue.join(aliceId, chessGameTypeId, INITIAL_BOARD);
 
         assertNull(bobJoin);
         assertNull(aliceJoinCheckers);
@@ -134,7 +158,7 @@ class MatchmakingQueueTest {
     @Test
     void cancel_removesWaitingRow() throws Exception {
         int aliceId = insertUser("alice");
-        matchmakingQueue.join(aliceId, gameTypeId);
+        matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
 
         matchmakingQueue.cancel(aliceId);
 
@@ -181,7 +205,7 @@ class MatchmakingQueueTest {
     private Callable<GameStateDTO> joinTask(int userId, int gameTypeId, CountDownLatch startSignal) {
         return () -> {
             startSignal.await();
-            return matchmakingQueue.join(userId, gameTypeId);
+            return matchmakingQueue.join(userId, gameTypeId, INITIAL_BOARD);
         };
     }
 

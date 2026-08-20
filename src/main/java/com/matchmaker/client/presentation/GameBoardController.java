@@ -29,6 +29,8 @@ public class GameBoardController {
 
     private static final int BOARD_SIZE = 8;
     private static final int TURN_TIMEOUT_SECONDS = 60;
+    /** Last-resort stand-in for a session row written before board state was set at creation. */
+    private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
     // Loaded defensively, not as a plain `= new AudioClip(...)` field initializer -- a null
     // resource (repackaging, a missing javafx-media native for this platform) would otherwise
     // throw inside <clinit>, which is an ExceptionInInitializerError that permanently prevents
@@ -212,7 +214,11 @@ public class GameBoardController {
 
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
-        JSONObject board = new JSONObject(state.getBoardState());
+        // Sessions are created with a real board now (JdbcMatchmakingQueue.pairOrEnqueue), so a
+        // null here means a row predating that -- an empty grid is a far better outcome than the
+        // NullPointerException org.json throws on a null string, which used to escape applyState()
+        // before updateStatusLabel() ran and leave the board frozen on the previous position.
+        JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
         JSONObject pieces = board.getJSONObject("pieces");
 
         // Each player sees their own color at the bottom, like sitting on opposite sides of the
