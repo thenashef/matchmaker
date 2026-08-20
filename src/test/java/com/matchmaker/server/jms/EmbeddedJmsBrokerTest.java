@@ -162,6 +162,65 @@ class EmbeddedJmsBrokerTest {
         });
     }
 
+    // The three tests below cover the *anonymous* producer -- session.createProducer(null), where
+    // the destination travels per-message on send(destination, message) rather than being fixed at
+    // creation. nonServiceConnectionCannotPublish() above only exercises a producer created with an
+    // explicit destination, which is checked in addProducer(); an anonymous one carries a null
+    // destination there and is let through by design, so without a check on the send() path it was
+    // an unchecked write channel to every destination on the broker.
+
+    @Test
+    void nonServiceConnectionCannotPublishViaAnAnonymousProducer() throws Exception {
+        int player1 = registerUser("player1");
+        int player2 = registerUser("player2");
+        gameSessionDao.addActiveSession(
+                new GameStateDTO(21, 1, player1, player2, GameStatus.ACTIVE, player1, null, "{\"pieces\":{}}"));
+        String token = sessionManager.createSession(player1);
+        Session session = userConnection(player1, token).createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        // Creating it is fine -- there is no destination to authorize yet.
+        MessageProducer anonymous = session.createProducer(null);
+
+        // Sending is not, even to a topic this player is a legitimate *subscriber* of: publishing
+        // is the server's job alone, or a player could forge a game result onto their opponent.
+        assertThrows(JMSException.class,
+                () -> anonymous.send(session.createTopic("session.21.events"),
+                        session.createTextMessage("forged move")));
+    }
+
+    @Test
+    void anonymousProducerCannotPublishToAnotherPlayersQueue() throws Exception {
+        int self = registerUser("self");
+        int other = registerUser("other");
+        String token = sessionManager.createSession(self);
+        Session session = userConnection(self, token).createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        MessageProducer anonymous = session.createProducer(null);
+
+        assertThrows(JMSException.class,
+                () -> anonymous.send(session.createQueue("player." + other + ".events"),
+                        session.createTextMessage("forged match")));
+    }
+
+    @Test
+    void serviceConnectionCanStillPublishViaAnAnonymousProducer() throws Exception {
+        int player1 = registerUser("player1");
+        int player2 = registerUser("player2");
+        gameSessionDao.addActiveSession(
+                new GameStateDTO(23, 1, player1, player2, GameStatus.ACTIVE, player1, null, "{\"pieces\":{}}"));
+        String token = sessionManager.createSession(player1);
+
+        Session consumerSession = userConnection(player1, token).createSession(false, Session.AUTO_ACKNOWLEDGE);
+        MessageConsumer consumer = consumerSession.createConsumer(consumerSession.createTopic("session.23.events"));
+
+        Session serviceSession = serviceConnection().createSession(false, Session.AUTO_ACKNOWLEDGE);
+        MessageProducer anonymous = serviceSession.createProducer(null);
+        anonymous.send(serviceSession.createTopic("session.23.events"),
+                serviceSession.createTextMessage("legitimate"));
+
+        assertNotNull(consumer.receive(2000), "the send() check must not lock out the server's own publisher");
+    }
+
     private int registerUser(String username) {
         return userDao.insert(username, "unused-hash").orElseThrow().id();
     }
