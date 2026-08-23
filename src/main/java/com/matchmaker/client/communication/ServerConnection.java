@@ -1,5 +1,7 @@
 package com.matchmaker.client.communication;
 
+import com.matchmaker.common.communication.ServerEventListener;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
@@ -62,4 +64,6 @@ public interface ServerConnection {
     Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener);
 
     Subscription subscribeToSessionTopic(int sessionId, ServerEventListener listener);
+
+    void close();
 }

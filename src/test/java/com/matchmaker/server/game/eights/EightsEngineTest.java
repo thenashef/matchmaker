@@ -51,10 +51,10 @@ class EightsEngineTest {
 
     @Test
     void isLegalMove_matchingSuitOrRank_isLegalAndMismatchIsNot() {
-        String state = state(List.of("7H", "2S"), List.of("9D"), List.of("3C"), List.of("KH"), null);
+        String state = state(List.of("7H", "KS", "2S"), List.of("9D"), List.of("3C"), List.of("KH"), null);
 
         assertTrue(engine.isLegalMove(state, true, play("7H")));
-        assertTrue(engine.isLegalMove(state, true, play("KD")));
+        assertTrue(engine.isLegalMove(state, true, play("KS")));
         assertFalse(engine.isLegalMove(state, true, play("2S")));
         assertFalse(engine.isLegalMove(state, true, play("9D")));
         assertFalse(engine.isLegalMove(state, true, DRAW));
@@ -126,7 +126,7 @@ class EightsEngineTest {
     @Test
     void applyMove_drawWhenPileEmpty_recyclesDiscardKeepingTopCard() {
         String after = engine.applyMove(
-                state(List.of("2S"), List.of("9D"), List.of(), List.of("KH", "7D", "3C"), null),
+                state(List.of("2S"), List.of("9D"), List.of(), List.of("7D", "3C", "KH"), null),
                 true, DRAW);
         JSONObject obj = new JSONObject(after);
 

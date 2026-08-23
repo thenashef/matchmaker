@@ -1,5 +1,7 @@
 package com.matchmaker.client.communication;
 
+import com.matchmaker.common.communication.ServerEventListener;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
@@ -221,5 +223,9 @@ public class InMemoryServerConnection implements ServerConnection {
         for (ServerEventListener listener : List.copyOf(sessionTopicListeners.getOrDefault(sessionId, List.of()))) {
             listener.onEvent(event);
         }
+    }
+
+    @Override
+    public void close() {
     }
 }

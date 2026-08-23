@@ -17,10 +17,10 @@ import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
 import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.dao.UserRecord;
+import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
-import org.mindrot.jbcrypt.BCrypt;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -41,11 +41,13 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     private final GameSessionDao gameSessionDao;
     private final GameEventPublisher gameEventPublisher;
     private final MatchmakingQueue matchmakingQueue;
+    private final GameEngineRegistry gameEngines;
     private final Duration onlineLivenessWindow;
 
     public AdminServiceImpl(SessionManager sessionManager, UserDao userDao, GameTypeDao gameTypeDao,
                              GameSessionDao gameSessionDao, GameEventPublisher gameEventPublisher,
-                             MatchmakingQueue matchmakingQueue, Duration onlineLivenessWindow)
+                             MatchmakingQueue matchmakingQueue, GameEngineRegistry gameEngines,
+                             Duration onlineLivenessWindow)
             throws RemoteException {
         super();
         this.sessionManager = sessionManager;
@@ -54,6 +56,7 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
         this.gameSessionDao = gameSessionDao;
         this.gameEventPublisher = gameEventPublisher;
         this.matchmakingQueue = matchmakingQueue;
+        this.gameEngines = gameEngines;
         this.onlineLivenessWindow = onlineLivenessWindow;
     }
 
@@ -68,6 +71,10 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     public GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
+        if (!gameEngines.isRegistered(newGameType.getName())) {
+            throw new IllegalArgumentException(
+                    "No game engine is registered for '" + newGameType.getName() + "'");
+        }
         return gameTypeDao.insert(newGameType);
     }
 
@@ -75,7 +82,7 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     public List<UserDTO> listUsers(String sessionToken)
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
-        return userDao.findAll().stream().map(AdminServiceImpl::toUserDTO).toList();
+        return userDao.findAll().stream().map(UserRecord::toUserDTO).toList();
     }
 
     @Override
@@ -84,7 +91,7 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
                    InvalidRegistrationException {
         UserRecord creatingAdmin = requireAdmin(sessionToken);
         UserValidation.validateRegistration(username, password, isAdmin);
-        String passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
+        String passwordHash = UserValidation.hashPassword(password);
         Optional<UserRecord> inserted = userDao.insert(username, passwordHash, isAdmin);
         if (inserted.isEmpty()) {
             throw new UsernameTakenException("Username '" + username + "' is already taken");
@@ -92,7 +99,7 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
         if (isAdmin) {
             LOG.log(Level.INFO, "Admin account '" + username + "' created by admin user " + creatingAdmin.id());
         }
-        return toUserDTO(inserted.get());
+        return inserted.get().toUserDTO();
     }
 
     @Override
@@ -133,11 +140,6 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
         return gameSessionDao.findMovesForSession(gameSessionId);
-    }
-
-    private static UserDTO toUserDTO(UserRecord record) {
-        return new UserDTO(record.id(), record.username(), record.admin(),
-                record.wins(), record.losses(), record.draws(), record.rating());
     }
 
     private UserRecord requireAdmin(String sessionToken) throws AuthenticationException, NotAdminException {

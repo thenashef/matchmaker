@@ -1,21 +1,27 @@
 package com.matchmaker.server.rmi;
 
 import com.matchmaker.common.exceptions.InvalidRegistrationException;
+import org.mindrot.jbcrypt.BCrypt;
 
 import java.nio.charset.StandardCharsets;
 
-/** Shared by player self-registration and admin-created accounts. */
 final class UserValidation {
 
     private static final int MAX_USERNAME_LENGTH = 50;
     private static final int MIN_USERNAME_LENGTH = 3;
     private static final int MIN_PASSWORD_LENGTH = 6;
-    // An admin can read every session's chat and force-end any game -- a 6-char floor is too low
-    // for that role once it's mintable from the app rather than only by hand in the database.
     private static final int MIN_ADMIN_PASSWORD_LENGTH = 12;
     private static final int MAX_PASSWORD_BYTES = 72;
 
     private UserValidation() {
+    }
+
+    static String hashPassword(String password) {
+        return BCrypt.hashpw(password, BCrypt.gensalt());
+    }
+
+    static boolean passwordMatches(String password, String passwordHash) {
+        return BCrypt.checkpw(password, passwordHash);
     }
 
     static void validateRegistration(String username, String password, boolean isAdmin)

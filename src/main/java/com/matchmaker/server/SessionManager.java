@@ -57,9 +57,6 @@ public class SessionManager {
         if (removed == null) {
             return;
         }
-        // A cleanly logged-out user shouldn't still read as "recently active" (e.g. for the rematch
-        // liveness check) just because lastSeenByUserId is untouched -- but only clear it if no other
-        // valid session remains for them (a user can be logged in from more than one client).
         boolean stillHasAnotherSession = sessionByToken.values().stream()
                 .anyMatch(session -> session.userId() == removed.userId());
         if (!stillHasAnotherSession) {

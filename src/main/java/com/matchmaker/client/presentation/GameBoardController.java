@@ -77,8 +77,6 @@ public class GameBoardController {
         this.navigator = navigator;
         resignButton.managedProperty().bind(resignButton.visibleProperty());
 
-        // Immediate fallback from the cached user, overwritten with a fresh value below -- the
-        // cached rating can be stale from login or an earlier game this session (see GameOverController).
         ratingBeforeGame = gameClientService.getCurrentUser().getRating();
         gameClientService.getProfile(
                 freshUser -> ratingBeforeGame = freshUser.getRating(),
@@ -87,15 +85,9 @@ public class GameBoardController {
         GameStateDTO latest = gameClientService.attachGameUpdateListener(this::applyState);
         applyState(latest != null ? latest : initialState);
         if (navigatedAway) {
-            // applyState already found the game over and navigated to GameOverController (which
-            // also already called leaveGame()) -- don't touch a torn-down gameClientService below.
             return;
         }
 
-        // Load history and only then start listening live. This narrows (but doesn't fully close)
-        // the race with a message the opponent sends during the async history round trip: attaching
-        // the listener first risked a duplicate render; this ordering instead risks rarely missing
-        // a message sent in the small gap between the history read and the listener attaching.
         gameClientService.getChatHistory(currentState.getSessionId(),
                 history -> {
                     history.forEach(this::appendChatMessage);
@@ -139,8 +131,6 @@ public class GameBoardController {
 
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
         resignButton.setVisible(!ended);
-        // The server only accepts chat while the session is ACTIVE (see PlayerServiceImpl); disable
-        // proactively rather than let the user type a "gg" that silently fails to send.
         chatInputField.setDisable(ended);
         chatSendButton.setDisable(ended);
 
@@ -356,8 +346,6 @@ public class GameBoardController {
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
                 "Forfeit this game? Your opponent will be credited the win.", ButtonType.YES, ButtonType.NO);
         confirmation.showAndWait().ifPresent(response -> {
-            // The confirmation dialog runs a nested event loop, so a push update (e.g. the
-            // opponent winning, or resigning first) can land while it's open -- re-check before acting.
             if (response != ButtonType.YES || currentState.getStatus() != GameStatus.ACTIVE) {
                 return;
             }

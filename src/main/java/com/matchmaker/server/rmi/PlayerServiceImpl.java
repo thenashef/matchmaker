@@ -229,18 +229,10 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
         GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
                 .orElseThrow(() -> new NotParticipantException("No active game session " + gameSessionId));
+        requireParticipant(session, userId);
 
-        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
-        }
-
-        int opponentId = session.getPlayer1Id() == userId ? session.getPlayer2Id() : session.getPlayer1Id();
-        Optional<GameStateDTO> abandoned = gameSessionDao.abandon(gameSessionId, opponentId);
+        Optional<GameStateDTO> abandoned = gameSessionDao.abandon(gameSessionId, opponentId(session, userId));
         if (abandoned.isEmpty()) {
-            // Session already ended between the read above and this call (e.g. the opponent's
-            // winning move landed first) -- resign is then a no-op, matching SessionWatchdog.abandon().
-            // Return the real outcome rather than the caller's synthesized "I lost" guess: the caller
-            // may in fact have won on the move that beat their resignation to the server.
             return gameSessionDao.findById(gameSessionId)
                     .orElseThrow(() -> new NotParticipantException("Session " + gameSessionId + " no longer exists"));
         }
@@ -262,17 +254,12 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
         GameStateDTO finished = gameSessionDao.findById(finishedSessionId)
                 .orElseThrow(() -> new NotParticipantException("No such game session " + finishedSessionId));
-        if (finished.getPlayer1Id() != userId && finished.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + finishedSessionId);
-        }
+        requireParticipant(finished, userId);
         if (finished.getStatus() == GameStatus.ACTIVE) {
             throw new NotParticipantException("Session " + finishedSessionId + " is still active");
         }
 
-        int opponentId = finished.getPlayer1Id() == userId ? finished.getPlayer2Id() : finished.getPlayer1Id();
-        // onlineUserIds() requires both a currently-valid token and recent activity, so a cleanly
-        // logged-out opponent is excluded immediately rather than staying "recently active" for
-        // the rest of the liveness window (see SessionManager.invalidate).
+        int opponentId = opponentId(finished, userId);
         if (!sessionManager.onlineUserIds(OPPONENT_RECENTLY_ACTIVE_WINDOW).contains(opponentId)) {
             throw new AlreadyInGameException(
                     "Opponent isn't currently online -- matchmake a new game instead of a rematch");
@@ -281,7 +268,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         GameStateDTO newSession = gameSessionDao.createRematch(finishedSessionId,
                 engineFor(finished.getGameTypeId()).initialState());
 
-        int otherUserId = newSession.getPlayer1Id() == userId ? newSession.getPlayer2Id() : newSession.getPlayer1Id();
+        int otherUserId = opponentId(newSession, userId);
         try {
             gameEventPublisher.publishToPlayer(otherUserId,
                     new GameEventDTO(GameEventType.REMATCH_CREATED, newSession.getSessionId(), newSession));
@@ -306,7 +293,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                         .thenComparing(Comparator.comparingInt(UserRecord::wins).reversed())
                         .thenComparing(UserRecord::username, String.CASE_INSENSITIVE_ORDER)
                         .thenComparingInt(UserRecord::id))
-                .map(PlayerServiceImpl::toLeaderboardEntry)
+                .map(UserRecord::toPublicUserDTO)
                 .toList();
     }
 
@@ -315,7 +302,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         int userId = sessionManager.resolve(sessionToken);
         UserRecord record = userDao.findById(userId)
                 .orElseThrow(() -> new AuthenticationException("User " + userId + " no longer exists"));
-        return toUserDTO(record);
+        return record.toUserDTO();
     }
 
     @Override
@@ -324,13 +311,11 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         int userId = sessionManager.resolve(sessionToken);
         GameStateDTO session = gameSessionDao.findById(gameSessionId)
                 .orElseThrow(() -> new NotParticipantException("No such game session " + gameSessionId));
-        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
-        }
-        int opponentId = session.getPlayer1Id() == userId ? session.getPlayer2Id() : session.getPlayer1Id();
+        requireParticipant(session, userId);
+        int opponentId = opponentId(session, userId);
         UserRecord record = userDao.findById(opponentId)
                 .orElseThrow(() -> new NotParticipantException("Opponent " + opponentId + " no longer exists"));
-        return toUserDTO(record);
+        return record.toUserDTO();
     }
 
     private GameEngine engineFor(int gameTypeId) {
@@ -339,14 +324,14 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         return gameEngines.forName(type.getName());
     }
 
-    private static UserDTO toUserDTO(UserRecord record) {
-        return new UserDTO(record.id(), record.username(), record.admin(),
-                record.wins(), record.losses(), record.draws(), record.rating());
+    private static void requireParticipant(GameStateDTO session, int userId) throws NotParticipantException {
+        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
+            throw new NotParticipantException(
+                    "User " + userId + " is not a participant in session " + session.getSessionId());
+        }
     }
 
-    /** Same stats as {@link #toUserDTO} but never publishes the admin privilege bit. */
-    private static UserDTO toLeaderboardEntry(UserRecord record) {
-        return new UserDTO(record.id(), record.username(), false,
-                record.wins(), record.losses(), record.draws(), record.rating());
+    private static int opponentId(GameStateDTO session, int userId) {
+        return session.getPlayer1Id() == userId ? session.getPlayer2Id() : session.getPlayer1Id();
     }
 }

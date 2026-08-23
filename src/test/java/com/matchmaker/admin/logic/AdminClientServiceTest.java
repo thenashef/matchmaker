@@ -98,6 +98,8 @@ class AdminClientServiceTest {
                         err -> fail(String.valueOf(err))));
 
         assertTrue(rejected);
+        assertEquals(List.of("token-2"), adminConnection.loggedOutTokens());
+        assertTrue(adminConnection.isClosed());
     }
 
     @Test

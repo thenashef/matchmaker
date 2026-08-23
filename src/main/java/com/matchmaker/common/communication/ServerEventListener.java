@@ -1,4 +1,4 @@
-package com.matchmaker.admin.communication;
+package com.matchmaker.common.communication;
 
 import com.matchmaker.common.dto.GameEventDTO;
 

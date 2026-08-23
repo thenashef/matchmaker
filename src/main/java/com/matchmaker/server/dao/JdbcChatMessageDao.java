@@ -37,9 +37,6 @@ public class JdbcChatMessageDao implements ChatMessageDao {
 
     @Override
     public List<ChatMessageDTO> findBySession(int sessionId) {
-        // Most-recent-first with a cap, then reversed below to chronological order -- an
-        // unbounded SELECT here would let a spammed session return a megabyte-scale transcript
-        // on every getChatHistory() call (which fires on every board entry).
         String sql = "SELECT SessionID, UserID, Content, SentAt FROM ChatMessage "
                 + "WHERE SessionID = ? ORDER BY SentAt DESC, ID DESC LIMIT " + MAX_HISTORY_MESSAGES;
         List<ChatMessageDTO> result = new ArrayList<>();

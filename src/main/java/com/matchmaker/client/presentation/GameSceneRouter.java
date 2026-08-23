@@ -20,8 +20,6 @@ final class GameSceneRouter {
                 controller.init(gameClientService, navigator, state);
             }
         } catch (RuntimeException e) {
-            // If the game screen fails to open, the server still has an ACTIVE session.
-            // Resign so neither player is stuck "already in a game".
             gameClientService.resign(state.getSessionId(), ignored -> { }, err -> { });
             gameClientService.leaveGame();
             throw e;

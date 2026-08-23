@@ -103,9 +103,6 @@ public class GameOverController {
 
     private static String friendlyRematchErrorMessage(Throwable error) {
         if (error instanceof AlreadyInGameException) {
-            // Covers a few distinct server-side reasons (opponent not currently online, opponent
-            // already in a different game, an earlier rematch of this session already ended) --
-            // all point the player at the same recovery, so one generic message is accurate for all.
             return "Rematch isn't available right now -- try matchmaking a new game instead.";
         }
         return "Rematch failed -- please try again.";

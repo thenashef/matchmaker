@@ -4,9 +4,11 @@ import com.matchmaker.server.dao.ChatMessageDao;
 import com.matchmaker.server.dao.DataSourceFactory;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.common.net.LoopbackHosts;
 import com.matchmaker.server.dao.JdbcChatMessageDao;
 import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
+import com.matchmaker.server.dao.JdbcMatchmakingDao;
 import com.matchmaker.server.dao.JdbcUserDao;
 import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.game.GameEngineRegistry;
@@ -15,7 +17,6 @@ import com.matchmaker.server.jms.EmbeddedJmsBroker;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsConnectionFactory;
 import com.matchmaker.server.jms.JmsSecurityPlugin;
-import com.matchmaker.server.matchmaking.JdbcMatchmakingQueue;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import com.matchmaker.server.rmi.AdminServiceImpl;
 import com.matchmaker.server.rmi.AuthServiceImpl;
@@ -43,15 +44,7 @@ public class ServerMain {
     private static final Duration WATCHDOG_TICK_INTERVAL = Duration.ofSeconds(5);
 
     public static void main(String[] args) throws Exception {
-        // Without this, RMI's first network call resolves the machine's own hostname via
-        // InetAddress.getLocalHost() -- on macOS, a ".local" mDNS hostname with no /etc/hosts
-        // entry makes that resolution take ~5s. Pinning it to loopback skips that lookup entirely.
-        System.setProperty("java.rmi.server.hostname", "127.0.0.1");
-        // ActiveMQ's IdGenerator independently calls InetAddress.getLocalHost() (via
-        // InetAddressUtil.getLocalHostName()) on the first JMS connection in the JVM, unless this
-        // property is set -- same ~5s mDNS stall as above, but a separate code path that the RMI
-        // property above does not cover.
-        System.setProperty("activemq.idgenerator.hostname", "127.0.0.1");
+        LoopbackHosts.pinToLoopback();
 
         Started started = startWithImpls(RMI_PORT, JMS_PORT);
         Runtime.getRuntime().addShutdownHook(new Thread(started::close, "server-shutdown"));
@@ -71,10 +64,11 @@ public class ServerMain {
         SessionManager sessionManager = new SessionManager();
 
         DataSource dataSource = DataSourceFactory.create();
+        Object sessionLock = new Object();
         UserDao userDao = new JdbcUserDao(dataSource);
-        GameSessionDao gameSessionDao = new JdbcGameSessionDao(dataSource);
+        GameSessionDao gameSessionDao = new JdbcGameSessionDao(dataSource, sessionLock);
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
-        MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
+        MatchmakingQueue matchmakingQueue = new JdbcMatchmakingDao(dataSource, sessionLock);
         ChatMessageDao chatMessageDao = new JdbcChatMessageDao(dataSource);
 
         String jmsServiceUsername = "matchmaker-service";
@@ -94,7 +88,7 @@ public class ServerMain {
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
                 matchmakingQueue, gameEventPublisher, gameEngines, chatMessageDao, userDao);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao,
-                gameSessionDao, gameEventPublisher, matchmakingQueue, DISCONNECT_TIMEOUT);
+                gameSessionDao, gameEventPublisher, matchmakingQueue, gameEngines, DISCONNECT_TIMEOUT);
 
         registry.rebind("AuthService", authService);
         registry.rebind("PlayerService", playerService);

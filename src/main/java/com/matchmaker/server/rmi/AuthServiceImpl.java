@@ -9,7 +9,6 @@ import com.matchmaker.common.rmi.AuthService;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.dao.UserRecord;
-import org.mindrot.jbcrypt.BCrypt;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
@@ -30,23 +29,23 @@ public class AuthServiceImpl extends UnicastRemoteObject implements AuthService 
     public UserDTO register(String username, String password)
             throws RemoteException, UsernameTakenException, InvalidRegistrationException {
         UserValidation.validateRegistration(username, password, false);
-        String passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
+        String passwordHash = UserValidation.hashPassword(password);
         Optional<UserRecord> inserted = userDao.insert(username, passwordHash);
         if (inserted.isEmpty()) {
             throw new UsernameTakenException("Username '" + username + "' is already taken");
         }
-        return toUserDTO(inserted.get());
+        return inserted.get().toUserDTO();
     }
 
     @Override
     public LoginResultDTO login(String username, String password) throws RemoteException, AuthenticationException {
         Optional<UserRecord> found = userDao.findByUsername(username);
-        if (found.isEmpty() || !BCrypt.checkpw(password, found.get().passwordHash())) {
+        if (found.isEmpty() || !UserValidation.passwordMatches(password, found.get().passwordHash())) {
             throw new AuthenticationException("Invalid username or password");
         }
         UserRecord record = found.get();
         String token = sessionManager.createSession(record.id());
-        return new LoginResultDTO(toUserDTO(record), token);
+        return new LoginResultDTO(record.toUserDTO(), token);
     }
 
     @Override
@@ -57,10 +56,5 @@ public class AuthServiceImpl extends UnicastRemoteObject implements AuthService 
     @Override
     public void logout(String sessionToken) throws RemoteException {
         sessionManager.invalidate(sessionToken);
-    }
-
-    private static UserDTO toUserDTO(UserRecord record) {
-        return new UserDTO(record.id(), record.username(), record.admin(),
-                record.wins(), record.losses(), record.draws(), record.rating());
     }
 }

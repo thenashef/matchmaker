@@ -29,6 +29,10 @@ public final class GameEngineRegistry {
         return engine;
     }
 
+    public boolean isRegistered(String name) {
+        return name != null && enginesByName.containsKey(normalize(name));
+    }
+
     private static String normalize(String name) {
         return name.toLowerCase(Locale.ROOT);
     }

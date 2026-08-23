@@ -10,6 +10,8 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotAdminException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
+import com.matchmaker.common.communication.ServerEventListener;
+import com.matchmaker.common.communication.Subscription;
 
 import java.util.List;
 
@@ -41,4 +43,6 @@ public interface AdminConnection {
     List<MoveDTO> listMoves(String sessionToken, int gameSessionId) throws AuthenticationException, NotAdminException;
 
     Subscription subscribeToSessionTopic(int sessionId, ServerEventListener listener);
+
+    void close();
 }

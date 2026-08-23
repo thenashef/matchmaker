@@ -55,8 +55,6 @@ public class LobbyController {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
 
-        // A former opponent can rematch us at any time while we're logged in, not just while
-        // we're on the Game Over screen -- every "idle" screen needs to be able to receive it.
         gameClientService.attachRematchListener(this::enterRematchedGame);
 
         UserDTO cached = gameClientService.getCurrentUser();

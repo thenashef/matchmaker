@@ -1,5 +1,7 @@
 package com.matchmaker.admin.communication;
 
+import com.matchmaker.common.communication.ServerEventListener;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
@@ -11,9 +13,9 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotAdminException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
+import com.matchmaker.common.jms.JmsClientSupport;
 import com.matchmaker.common.rmi.AdminService;
 import com.matchmaker.common.rmi.AuthService;
-import org.apache.activemq.ActiveMQConnectionFactory;
 
 import javax.jms.Connection;
 import javax.jms.JMSException;
@@ -54,11 +56,9 @@ public class RmiJmsAdminConnection implements AdminConnection {
 
     private void connectJms(int userId, String sessionToken) {
         try {
-            ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + jmsPort);
-            factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
-            jmsConnection = factory.createConnection(String.valueOf(userId), sessionToken);
-            jmsConnection.start();
-            jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            JmsClientSupport.closeQuietly(jmsConnection);
+            jmsConnection = JmsClientSupport.open(host, jmsPort, userId, sessionToken);
+            jmsSession = JmsClientSupport.createSession(jmsConnection);
         } catch (JMSException e) {
             throw new AdminCommunicationException("Failed to connect to JMS broker at " + host + ":" + jmsPort, e);
         }
@@ -197,12 +197,16 @@ public class RmiJmsAdminConnection implements AdminConnection {
         }
     }
 
+    @Override
     public void close() {
-        if (jmsConnection == null) {
+        jmsSession = null;
+        Connection connection = jmsConnection;
+        jmsConnection = null;
+        if (connection == null) {
             return;
         }
         try {
-            jmsConnection.close();
+            connection.close();
         } catch (JMSException e) {
             LOG.log(Level.WARNING, "Failed to close JMS connection", e);
         }

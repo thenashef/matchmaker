@@ -1,7 +1,7 @@
 package com.matchmaker.client.logic;
 
 import com.matchmaker.client.communication.ServerConnection;
-import com.matchmaker.client.communication.Subscription;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
@@ -66,8 +66,6 @@ public class GameClientService {
                     sessionToken = result.getSessionToken();
                     startKeepAlive();
                     try {
-                        // Login-lifetime, not queueing-lifetime: MATCH_FOUND and REMATCH_CREATED can
-                        // both arrive at any point while logged in, not just while actively queued.
                         playerQueueSubscription = serverConnection.subscribeToPlayerQueue(
                                 currentUser.getId(), this::onPlayerQueueEvent);
                     } catch (Exception e) {
@@ -195,6 +193,7 @@ public class GameClientService {
     }
 
     public void shutdown() {
+        leaveGame();
         rematchListener = null;
         if (playerQueueSubscription != null) {
             playerQueueSubscription.close();
@@ -230,12 +229,6 @@ public class GameClientService {
     }
 
     private void enterGame(GameStateDTO initialState) {
-        // Idempotent by session id: rematch/joinQueue/MATCH_FOUND/REMATCH_CREATED can all end up
-        // calling this for the same session the caller is already live in (most notably, both
-        // players clicking Rematch converges on one session server-side, so each of them sees it
-        // once as their own direct RMI response and once more as the push meant for the other) --
-        // don't tear down and rebuild a working subscription, which would lose anything published
-        // in the gap.
         if (currentGameState != null && currentGameState.getSessionId() == initialState.getSessionId()) {
             return;
         }

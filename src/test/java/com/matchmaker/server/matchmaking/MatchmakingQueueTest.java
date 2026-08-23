@@ -7,6 +7,7 @@ import com.matchmaker.server.TestDatabase;
 import com.matchmaker.server.dao.DataSourceFactory;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.JdbcGameSessionDao;
+import com.matchmaker.server.dao.JdbcMatchmakingDao;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -34,8 +35,9 @@ class MatchmakingQueueTest {
 
     private static final String INITIAL_BOARD = "{\"rows\":8,\"cols\":8,\"pieces\":{\"a1\":\"b\"}}";
 
-    private final MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(DATA_SOURCE);
-    private final GameSessionDao gameSessionDao = new JdbcGameSessionDao(DATA_SOURCE);
+    private final Object sessionLock = new Object();
+    private final MatchmakingQueue matchmakingQueue = new JdbcMatchmakingDao(DATA_SOURCE, sessionLock);
+    private final GameSessionDao gameSessionDao = new JdbcGameSessionDao(DATA_SOURCE, sessionLock);
 
     private int gameTypeId;
 

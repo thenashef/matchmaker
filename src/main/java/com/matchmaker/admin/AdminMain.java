@@ -4,6 +4,7 @@ import com.matchmaker.admin.communication.RmiJmsAdminConnection;
 import com.matchmaker.admin.logic.AdminClientService;
 import com.matchmaker.admin.presentation.AdminLoginController;
 import com.matchmaker.admin.presentation.SceneNavigator;
+import com.matchmaker.common.net.LoopbackHosts;
 import javafx.application.Application;
 import javafx.stage.Stage;
 
@@ -37,11 +38,7 @@ public class AdminMain extends Application {
     }
 
     public static void main(String[] args) {
-        // See ServerMain.main() -- avoids a ~5s mDNS hostname-resolution stall on the first RMI call.
-        System.setProperty("java.rmi.server.hostname", "127.0.0.1");
-        // See ServerMain.main() -- ActiveMQ's IdGenerator hits the same mDNS stall independently,
-        // on this JVM's first JMS connection.
-        System.setProperty("activemq.idgenerator.hostname", "127.0.0.1");
+        LoopbackHosts.pinToLoopback();
         launch(args);
     }
 }

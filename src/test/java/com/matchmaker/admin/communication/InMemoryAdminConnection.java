@@ -1,5 +1,7 @@
 package com.matchmaker.admin.communication;
 
+import com.matchmaker.common.communication.ServerEventListener;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
@@ -39,6 +41,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
     private final java.util.List<String> loggedOutTokens = new java.util.ArrayList<>();
     private volatile String lastKeepAliveToken;
+    private boolean closed;
 
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
 
@@ -60,6 +63,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     public boolean wasForceEndSessionCalled() { return forceEndSessionCalled; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
     public java.util.List<String> loggedOutTokens() { return loggedOutTokens; }
+    public boolean isClosed() { return closed; }
     public String lastKeepAliveToken() { return lastKeepAliveToken; }
 
     @Override
@@ -147,5 +151,10 @@ public class InMemoryAdminConnection implements AdminConnection {
         for (ServerEventListener listener : List.copyOf(sessionTopicListeners.getOrDefault(sessionId, List.of()))) {
             listener.onEvent(event);
         }
+    }
+
+    @Override
+    public void close() {
+        closed = true;
     }
 }

@@ -1,4 +1,4 @@
-package com.matchmaker.client.communication;
+package com.matchmaker.common.communication;
 
 @FunctionalInterface
 public interface Subscription {

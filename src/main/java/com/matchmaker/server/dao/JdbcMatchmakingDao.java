@@ -1,58 +1,70 @@
-package com.matchmaker.server.matchmaking;
+package com.matchmaker.server.dao;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
-import com.matchmaker.server.dao.DaoException;
+import com.matchmaker.server.matchmaking.MatchmakingQueue;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
-public class JdbcMatchmakingQueue implements MatchmakingQueue {
+public class JdbcMatchmakingDao implements MatchmakingQueue {
 
     private final DataSource dataSource;
+    private final Object sessionLock;
 
-    public JdbcMatchmakingQueue(DataSource dataSource) {
+    public JdbcMatchmakingDao(DataSource dataSource) {
+        this(dataSource, new Object());
+    }
+
+    public JdbcMatchmakingDao(DataSource dataSource, Object sessionLock) {
         this.dataSource = dataSource;
+        this.sessionLock = sessionLock;
     }
 
     @Override
-    public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState)
+    public GameStateDTO join(int userId, int gameTypeId, String initialBoardState)
             throws AlreadyInGameException {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                GameStateDTO result = pairOrEnqueue(conn, userId, gameTypeId, initialBoardState);
-                conn.commit();
-                return result;
-            } catch (AlreadyInGameException e) {
-                conn.rollback();
-                throw e;
+        synchronized (sessionLock) {
+            try (Connection conn = dataSource.getConnection()) {
+                boolean previousAutoCommit = conn.getAutoCommit();
+                conn.setAutoCommit(false);
+                try {
+                    GameStateDTO result = pairOrEnqueue(conn, userId, gameTypeId, initialBoardState);
+                    conn.commit();
+                    return result;
+                } catch (AlreadyInGameException e) {
+                    conn.rollback();
+                    throw e;
+                } catch (SQLException e) {
+                    conn.rollback();
+                    throw new DaoException("Failed to join matchmaking queue for user " + userId, e);
+                } finally {
+                    GameSessionSql.restoreAutoCommit(conn, previousAutoCommit);
+                }
             } catch (SQLException e) {
-                conn.rollback();
                 throw new DaoException("Failed to join matchmaking queue for user " + userId, e);
             }
-        } catch (SQLException e) {
-            throw new DaoException("Failed to join matchmaking queue for user " + userId, e);
         }
     }
 
     @Override
-    public synchronized void cancel(int userId) {
-        String sql = "DELETE FROM MatchmakingQueue WHERE UserID = ? AND Status = 'WAITING'";
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setInt(1, userId);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            throw new DaoException("Failed to cancel matchmaking queue for user " + userId, e);
+    public void cancel(int userId) {
+        synchronized (sessionLock) {
+            String sql = "DELETE FROM MatchmakingQueue WHERE UserID = ? AND Status = 'WAITING'";
+            try (Connection conn = dataSource.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setInt(1, userId);
+                stmt.executeUpdate();
+            } catch (SQLException e) {
+                throw new DaoException("Failed to cancel matchmaking queue for user " + userId, e);
+            }
         }
     }
 
@@ -71,17 +83,8 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
 
     private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId, String initialBoardState)
             throws SQLException, AlreadyInGameException {
-        String findActiveSessionSql = "SELECT ID FROM GameSession "
-                + "WHERE (Player1ID = ? OR Player2ID = ?) AND Status = 'ACTIVE' LIMIT 1";
-        try (PreparedStatement stmt = conn.prepareStatement(findActiveSessionSql)) {
-            stmt.setInt(1, userId);
-            stmt.setInt(2, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    throw new AlreadyInGameException("User " + userId + " is already in active game session "
-                            + rs.getInt("ID"));
-                }
-            }
+        if (GameSessionSql.hasActiveSession(conn, userId)) {
+            throw new AlreadyInGameException("User " + userId + " is already in an active game session");
         }
 
         String findOwnRowSql = "SELECT ID, GameTypeID FROM MatchmakingQueue "
@@ -105,9 +108,6 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
             deleteQueueRow(conn, ownQueueId);
         }
 
-        // Ordered candidates rather than a single LIMIT 1: a candidate can be stale (e.g. they were
-        // drafted into a rematch by their other-game opponent, or force-ended, since they queued) --
-        // skip and clean up any such row rather than pairing the caller with someone already playing.
         List<int[]> candidates = new ArrayList<>();
         String findCandidatesSql = "SELECT ID, UserID FROM MatchmakingQueue "
                 + "WHERE GameTypeID = ? AND UserID != ? AND Status = 'WAITING' "
@@ -125,31 +125,14 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         for (int[] candidate : candidates) {
             int candidateQueueId = candidate[0];
             int candidateUserId = candidate[1];
-            if (hasActiveSession(conn, candidateUserId)) {
+            if (GameSessionSql.hasActiveSession(conn, candidateUserId)) {
                 deleteQueueRow(conn, candidateQueueId);
                 continue;
             }
 
-            String insertSessionSql = "INSERT INTO GameSession "
-                    + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, BoardState, "
-                    + "TurnStartedAt, StartTime) "
-                    + "VALUES (?, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())";
-            int sessionId;
-            try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
-                stmt.setInt(1, gameTypeId);
-                stmt.setInt(2, candidateUserId);
-                stmt.setInt(3, userId);
-                stmt.setInt(4, candidateUserId);
-                stmt.setString(5, initialBoardState);
-                stmt.executeUpdate();
-                try (ResultSet keys = stmt.getGeneratedKeys()) {
-                    keys.next();
-                    sessionId = keys.getInt(1);
-                }
-            }
-
+            int sessionId = GameSessionSql.insertActiveSession(
+                    conn, gameTypeId, candidateUserId, userId, initialBoardState);
             deleteQueueRow(conn, candidateQueueId);
-
             return new GameStateDTO(sessionId, gameTypeId, candidateUserId, userId,
                     GameStatus.ACTIVE, candidateUserId, null, initialBoardState);
         }
@@ -163,17 +146,6 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
             stmt.executeUpdate();
         }
         return null;
-    }
-
-    private boolean hasActiveSession(Connection conn, int userId) throws SQLException {
-        try (PreparedStatement stmt = conn.prepareStatement(
-                "SELECT ID FROM GameSession WHERE (Player1ID = ? OR Player2ID = ?) AND Status = 'ACTIVE' LIMIT 1")) {
-            stmt.setInt(1, userId);
-            stmt.setInt(2, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next();
-            }
-        }
     }
 
     private void deleteQueueRow(Connection conn, int queueId) throws SQLException {

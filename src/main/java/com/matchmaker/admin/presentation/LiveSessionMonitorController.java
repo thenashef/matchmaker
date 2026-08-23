@@ -145,8 +145,6 @@ public class LiveSessionMonitorController {
         fileChooser.setTitle("Export Move Log");
         fileChooser.setInitialFileName("session-" + sessionId + "-moves.txt");
         Window owner = exportLogButton.getScene().getWindow();
-        // showSaveDialog() runs a nested event loop, during which a pushed applyState() could
-        // reassign currentState -- capture the session id above rather than re-reading it after.
         File file = fileChooser.showSaveDialog(owner);
         if (file == null) {
             return;

@@ -24,7 +24,6 @@ public class MatchmakingWaitController {
         statusLabel.setText(gameName == null || gameName.isBlank()
                 ? "Waiting for an opponent..."
                 : "Waiting for a " + gameName + " opponent...");
-        // A former opponent can rematch us while we're waiting on this screen too.
         gameClientService.attachRematchListener(this::enterRematchedGame);
     }
 

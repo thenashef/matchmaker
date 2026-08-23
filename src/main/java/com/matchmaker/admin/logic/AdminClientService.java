@@ -1,7 +1,7 @@
 package com.matchmaker.admin.logic;
 
 import com.matchmaker.admin.communication.AdminConnection;
-import com.matchmaker.admin.communication.Subscription;
+import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
@@ -56,6 +56,7 @@ public class AdminClientService {
                 result -> {
                     if (!result.getUser().isAdmin()) {
                         adminConnection.logout(result.getSessionToken());
+                        adminConnection.close();
                         onNotAdmin.run();
                         return;
                     }
