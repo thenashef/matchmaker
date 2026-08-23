@@ -4,8 +4,10 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,7 +29,9 @@ public class SessionManager {
 
     public String createSession(int userId) {
         String token = UUID.randomUUID().toString();
-        sessionByToken.put(token, new Session(userId, Instant.now()));
+        Instant now = Instant.now();
+        sessionByToken.put(token, new Session(userId, now));
+        lastSeenByUserId.put(userId, now);
         return token;
     }
 
@@ -46,8 +50,20 @@ public class SessionManager {
     }
 
     public void invalidate(String token) {
-        if (token != null) {
-            sessionByToken.remove(token);
+        if (token == null) {
+            return;
+        }
+        Session removed = sessionByToken.remove(token);
+        if (removed == null) {
+            return;
+        }
+        // A cleanly logged-out user shouldn't still read as "recently active" (e.g. for the rematch
+        // liveness check) just because lastSeenByUserId is untouched -- but only clear it if no other
+        // valid session remains for them (a user can be logged in from more than one client).
+        boolean stillHasAnotherSession = sessionByToken.values().stream()
+                .anyMatch(session -> session.userId() == removed.userId());
+        if (!stillHasAnotherSession) {
+            lastSeenByUserId.remove(removed.userId());
         }
     }
 
@@ -60,6 +76,27 @@ public class SessionManager {
 
     public Optional<Instant> lastSeen(int userId) {
         return Optional.ofNullable(lastSeenByUserId.get(userId));
+    }
+
+    /**
+     * Distinct user IDs with both a currently-unexpired session token and recent activity within
+     * {@code livenessWindow} (players and admins alike). Token validity alone isn't enough -- the
+     * token TTL is much longer than a realistic disconnect window, so a client that vanished
+     * without logging out would otherwise still count as "online" for the rest of the TTL.
+     */
+    public Set<Integer> onlineUserIds(Duration livenessWindow) {
+        Instant now = Instant.now();
+        Set<Integer> ids = new HashSet<>();
+        for (Session session : sessionByToken.values()) {
+            if (isExpired(session, now)) {
+                continue;
+            }
+            Instant seen = lastSeenByUserId.get(session.userId());
+            if (seen != null && Duration.between(seen, now).compareTo(livenessWindow) <= 0) {
+                ids.add(session.userId());
+            }
+        }
+        return ids;
     }
 
     private boolean isExpired(Session session, Instant now) {

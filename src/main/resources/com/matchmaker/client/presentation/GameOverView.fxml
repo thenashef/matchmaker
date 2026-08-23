@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.matchmaker.client.presentation.GameOverController"
+      spacing="14" alignment="CENTER">
+    <padding><Insets top="40" right="40" bottom="40" left="40"/></padding>
+    <Label text="Game Over" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+    <Label fx:id="resultLabel" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <Label fx:id="opponentLabel" style="-fx-font-size: 14px;"/>
+    <Label fx:id="ratingLabel" style="-fx-font-size: 16px;"/>
+    <HBox spacing="10" alignment="CENTER">
+        <Button fx:id="rematchButton" text="Rematch" onAction="#onRematch"/>
+        <Button fx:id="backToLobbyButton" text="Back to Lobby" onAction="#onBackToLobby"/>
+    </HBox>
+    <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="280"/>
+</VBox>

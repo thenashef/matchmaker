@@ -1,6 +1,7 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
 import javafx.fxml.FXML;
@@ -21,6 +22,10 @@ public class LobbyController {
     public void init(GameClientService gameClientService, SceneNavigator navigator) {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
+
+        // A former opponent can rematch us at any time while we're logged in, not just while
+        // we're on the Game Over screen -- every "idle" screen needs to be able to receive it.
+        gameClientService.attachRematchListener(this::enterRematchedGame);
 
         gameTypeList.setCellFactory(list -> new ListCell<>() {
             @Override
@@ -63,5 +68,11 @@ public class LobbyController {
                             ? "You're already in a game."
                             : error.getMessage());
                 });
+    }
+
+    private void enterRematchedGame(GameStateDTO newSession) {
+        GameBoardController controller = navigator.show("GameBoardView.fxml",
+                "MatchMaker - Game (" + gameClientService.getCurrentUser().getUsername() + ")");
+        controller.init(gameClientService, navigator, newSession);
     }
 }

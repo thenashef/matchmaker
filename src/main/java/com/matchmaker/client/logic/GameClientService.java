@@ -2,6 +2,7 @@ package com.matchmaker.client.logic;
 
 import com.matchmaker.client.communication.ServerConnection;
 import com.matchmaker.client.communication.Subscription;
+import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
@@ -10,6 +11,7 @@ import com.matchmaker.common.enums.GameEventType;
 import javafx.application.Platform;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,10 +39,12 @@ public class GameClientService {
 
     private Subscription playerQueueSubscription;
     private Consumer<GameStateDTO> pendingMatchCallback;
+    private volatile Consumer<GameStateDTO> rematchListener;
 
     private Subscription sessionTopicSubscription;
     private volatile GameStateDTO currentGameState;
     private volatile Consumer<GameStateDTO> gameUpdateListener;
+    private volatile Consumer<ChatMessageDTO> chatListener;
 
     public GameClientService(ServerConnection serverConnection) {
         this(serverConnection, Duration.ofSeconds(15));
@@ -61,6 +65,15 @@ public class GameClientService {
                     currentUser = result.getUser();
                     sessionToken = result.getSessionToken();
                     startKeepAlive();
+                    try {
+                        // Login-lifetime, not queueing-lifetime: MATCH_FOUND and REMATCH_CREATED can
+                        // both arrive at any point while logged in, not just while actively queued.
+                        playerQueueSubscription = serverConnection.subscribeToPlayerQueue(
+                                currentUser.getId(), this::onPlayerQueueEvent);
+                    } catch (Exception e) {
+                        onError.accept(e);
+                        return;
+                    }
                     onSuccess.accept(result.getUser());
                 },
                 onError);
@@ -82,8 +95,6 @@ public class GameClientService {
                         onMatched.accept(result);
                     } else {
                         pendingMatchCallback = onMatched;
-                        playerQueueSubscription = serverConnection.subscribeToPlayerQueue(
-                                currentUser.getId(), this::onPlayerQueueEvent);
                         onWaiting.run();
                     }
                 },
@@ -93,7 +104,7 @@ public class GameClientService {
     public void cancelQueue(Runnable onCancelled, Consumer<Throwable> onError) {
         runAsync(() -> { serverConnection.cancelQueue(sessionToken); return null; },
                 ignored -> {
-                    closePlayerQueueSubscription();
+                    pendingMatchCallback = null;
                     onCancelled.run();
                 },
                 onError);
@@ -114,13 +125,64 @@ public class GameClientService {
                 onSuccess, onError);
     }
 
+    public void resign(int gameSessionId, Consumer<GameStateDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.resign(sessionToken, gameSessionId),
+                result -> {
+                    currentGameState = result;
+                    onSuccess.accept(result);
+                },
+                onError);
+    }
+
     public GameStateDTO attachGameUpdateListener(Consumer<GameStateDTO> listener) {
         this.gameUpdateListener = listener;
         return currentGameState;
     }
 
+    public void attachChatListener(Consumer<ChatMessageDTO> listener) {
+        this.chatListener = listener;
+    }
+
+    public void sendChatMessage(int gameSessionId, String content, Runnable onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> { serverConnection.sendChatMessage(sessionToken, gameSessionId, content); return null; },
+                ignored -> onSuccess.run(),
+                onError);
+    }
+
+    public void getChatHistory(int gameSessionId, Consumer<List<ChatMessageDTO>> onSuccess,
+                                Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.getChatHistory(sessionToken, gameSessionId), onSuccess, onError);
+    }
+
+    public void attachRematchListener(Consumer<GameStateDTO> listener) {
+        this.rematchListener = listener;
+    }
+
+    public void rematch(int finishedSessionId, Consumer<GameStateDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.rematch(sessionToken, finishedSessionId),
+                result -> {
+                    enterGame(result);
+                    onSuccess.accept(result);
+                },
+                onError);
+    }
+
+    public void getProfile(Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.getProfile(sessionToken),
+                result -> {
+                    currentUser = result;
+                    onSuccess.accept(result);
+                },
+                onError);
+    }
+
+    public void getOpponentProfile(int gameSessionId, Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.getOpponentProfile(sessionToken, gameSessionId), onSuccess, onError);
+    }
+
     public void leaveGame() {
         gameUpdateListener = null;
+        chatListener = null;
         if (sessionTopicSubscription != null) {
             sessionTopicSubscription.close();
             sessionTopicSubscription = null;
@@ -129,6 +191,11 @@ public class GameClientService {
     }
 
     public void shutdown() {
+        rematchListener = null;
+        if (playerQueueSubscription != null) {
+            playerQueueSubscription.close();
+            playerQueueSubscription = null;
+        }
         if (sessionToken != null) {
             serverConnection.logout(sessionToken);
             sessionToken = null;
@@ -159,20 +226,39 @@ public class GameClientService {
     }
 
     private void enterGame(GameStateDTO initialState) {
+        // Idempotent by session id: rematch/joinQueue/MATCH_FOUND/REMATCH_CREATED can all end up
+        // calling this for the same session the caller is already live in (most notably, both
+        // players clicking Rematch converges on one session server-side, so each of them sees it
+        // once as their own direct RMI response and once more as the push meant for the other) --
+        // don't tear down and rebuild a working subscription, which would lose anything published
+        // in the gap.
+        if (currentGameState != null && currentGameState.getSessionId() == initialState.getSessionId()) {
+            return;
+        }
+        if (sessionTopicSubscription != null) {
+            sessionTopicSubscription.close();
+        }
         currentGameState = initialState;
         sessionTopicSubscription = serverConnection.subscribeToSessionTopic(
                 initialState.getSessionId(), this::onSessionTopicEvent);
     }
 
     private void onPlayerQueueEvent(GameEventDTO event) {
+        if (event.getType() == GameEventType.REMATCH_CREATED) {
+            Platform.runLater(() -> {
+                GameStateDTO newSession = event.getGameState();
+                pendingMatchCallback = null;
+                enterGame(newSession);
+                if (rematchListener != null) {
+                    rematchListener.accept(newSession);
+                }
+            });
+            return;
+        }
         if (event.getType() != GameEventType.MATCH_FOUND) {
             return;
         }
         Platform.runLater(() -> {
-            if (playerQueueSubscription != null) {
-                playerQueueSubscription.close();
-                playerQueueSubscription = null;
-            }
             GameStateDTO matchedState = event.getGameState();
             enterGame(matchedState);
             if (pendingMatchCallback != null) {
@@ -184,6 +270,19 @@ public class GameClientService {
     }
 
     private void onSessionTopicEvent(GameEventDTO event) {
+        if (event.getType() == GameEventType.CHAT_MESSAGE) {
+            if (event.getChatSenderUserId() == null) {
+                LOG.log(Level.WARNING, "Ignoring CHAT_MESSAGE event with no sender for session " + event.getSessionId());
+                return;
+            }
+            Platform.runLater(() -> {
+                if (chatListener != null) {
+                    chatListener.accept(new ChatMessageDTO(event.getSessionId(), event.getChatSenderUserId(),
+                            event.getChatContent(), LocalDateTime.now()));
+                }
+            });
+            return;
+        }
         if (event.getType() != GameEventType.MOVE_MADE && event.getType() != GameEventType.SESSION_FORCE_ENDED
                 && event.getType() != GameEventType.SESSION_ABANDONED) {
             return;
@@ -194,14 +293,6 @@ public class GameClientService {
                 gameUpdateListener.accept(currentGameState);
             }
         });
-    }
-
-    private void closePlayerQueueSubscription() {
-        if (playerQueueSubscription != null) {
-            playerQueueSubscription.close();
-            playerQueueSubscription = null;
-        }
-        pendingMatchCallback = null;
     }
 
     private <T> void runAsync(ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {

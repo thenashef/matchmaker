@@ -1,8 +1,10 @@
 package com.matchmaker.server;
 
+import com.matchmaker.server.dao.ChatMessageDao;
 import com.matchmaker.server.dao.DataSourceFactory;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.server.dao.JdbcChatMessageDao;
 import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
 import com.matchmaker.server.dao.JdbcUserDao;
@@ -42,6 +44,11 @@ public class ServerMain {
     private static final Duration WATCHDOG_TICK_INTERVAL = Duration.ofSeconds(5);
 
     public static void main(String[] args) throws Exception {
+        // Without this, RMI's first network call resolves the machine's own hostname via
+        // InetAddress.getLocalHost() -- on macOS, a ".local" mDNS hostname with no /etc/hosts
+        // entry makes that resolution take ~5s. Pinning it to loopback skips that lookup entirely.
+        System.setProperty("java.rmi.server.hostname", "127.0.0.1");
+
         Started started = startWithImpls(RMI_PORT, JMS_PORT);
         Runtime.getRuntime().addShutdownHook(new Thread(started::close, "server-shutdown"));
 
@@ -64,6 +71,7 @@ public class ServerMain {
         GameSessionDao gameSessionDao = new JdbcGameSessionDao(dataSource);
         GameTypeDao gameTypeDao = new JdbcGameTypeDao(dataSource);
         MatchmakingQueue matchmakingQueue = new JdbcMatchmakingQueue(dataSource);
+        ChatMessageDao chatMessageDao = new JdbcChatMessageDao(dataSource);
 
         String jmsServiceUsername = "matchmaker-service";
         String jmsServicePassword = UUID.randomUUID().toString();
@@ -80,9 +88,9 @@ public class ServerMain {
         Registry registry = LocateRegistry.createRegistry(rmiPort);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
-                matchmakingQueue, gameEventPublisher, gameEngine);
+                matchmakingQueue, gameEventPublisher, gameEngine, chatMessageDao, userDao);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao,
-                gameSessionDao, gameEventPublisher);
+                gameSessionDao, gameEventPublisher, matchmakingQueue, DISCONNECT_TIMEOUT);
 
         registry.rebind("AuthService", authService);
         registry.rebind("PlayerService", playerService);

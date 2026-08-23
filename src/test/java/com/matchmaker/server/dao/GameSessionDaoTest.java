@@ -2,6 +2,7 @@ package com.matchmaker.server.dao;
 
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.server.TestDatabase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,17 @@ class GameSessionDaoTest {
     }
 
     @Test
+    void findFinishedSessionsForUser_includesAbandonedSessions() throws Exception {
+        int abandonedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "ABANDONED", player2Id);
+
+        List<GameStateDTO> history = gameSessionDao.findFinishedSessionsForUser(player1Id);
+
+        assertEquals(1, history.size());
+        assertEquals(abandonedSessionId, history.get(0).getSessionId());
+        assertEquals(GameStatus.ABANDONED, history.get(0).getStatus());
+    }
+
+    @Test
     void findFinishedSessionsForUser_userNotInAnySession_returnsEmptyList() {
         List<GameStateDTO> history = gameSessionDao.findFinishedSessionsForUser(player1Id);
 
@@ -74,6 +86,114 @@ class GameSessionDaoTest {
     @Test
     void findActiveById_absentForAnUnknownId() {
         assertTrue(gameSessionDao.findActiveById(999999).isEmpty());
+    }
+
+    @Test
+    void createRematch_happyPath_createsSwappedActiveSessionWithFreshBoardAndTurnClock() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        GameStateDTO result = gameSessionDao.createRematch(finishedSessionId, "{\"fresh\":true}");
+
+        assertEquals(GameStatus.ACTIVE, result.getStatus());
+        assertEquals(player2Id, result.getPlayer1Id(), "players should swap so turn order alternates");
+        assertEquals(player1Id, result.getPlayer2Id());
+        assertEquals(player2Id, result.getCurrentTurnUserId(), "the new player1 moves first");
+        assertEquals("{\"fresh\":true}", result.getBoardState());
+        assertTrue(gameSessionDao.currentTurnStartedAt(result.getSessionId()).isPresent(),
+                "TurnStartedAt must be set or the turn-timeout watchdog never engages");
+    }
+
+    @Test
+    void createRematch_repeatedCall_isIdempotentAndReturnsTheSameSession() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        GameStateDTO first = gameSessionDao.createRematch(finishedSessionId, "{}");
+        GameStateDTO second = gameSessionDao.createRematch(finishedSessionId, "{}");
+
+        assertEquals(first.getSessionId(), second.getSessionId());
+    }
+
+    @Test
+    void createRematch_newPlayer2AlreadyHasADifferentActiveSession_throwsAlreadyInGameException() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        int strangerId = insertUser("stranger");
+        insertActiveSession(player1Id, strangerId, gameTypeId); // player1Id becomes newPlayer2Id after the swap
+
+        assertThrows(AlreadyInGameException.class, () -> gameSessionDao.createRematch(finishedSessionId, "{}"));
+    }
+
+    @Test
+    void createRematch_newPlayer1AlreadyHasADifferentActiveSession_throwsAlreadyInGameException() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        int strangerId = insertUser("stranger");
+        insertActiveSession(player2Id, strangerId, gameTypeId); // player2Id becomes newPlayer1Id after the swap
+
+        assertThrows(AlreadyInGameException.class, () -> gameSessionDao.createRematch(finishedSessionId, "{}"));
+    }
+
+    @Test
+    void createRematch_repeatedCallAfterTheRematchAlreadyEnded_throwsAlreadyInGameException() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        GameStateDTO firstRematch = gameSessionDao.createRematch(finishedSessionId, "{}");
+        gameSessionDao.abandon(firstRematch.getSessionId(), player1Id);
+
+        assertThrows(AlreadyInGameException.class, () -> gameSessionDao.createRematch(finishedSessionId, "{}"));
+    }
+
+    @Test
+    void createRematch_deletesStaleWaitingMatchmakingQueueRowsForBothPlayers() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        insertWaitingQueueRow(player1Id, gameTypeId);
+        insertWaitingQueueRow(player2Id, gameTypeId);
+
+        gameSessionDao.createRematch(finishedSessionId, "{}");
+
+        assertEquals(0, countWaitingQueueRowsFor(player1Id),
+                "a stale queue row would let a third player be paired with someone already in the rematch");
+        assertEquals(0, countWaitingQueueRowsFor(player2Id));
+    }
+
+    @Test
+    void countActive_countsOnlyActiveSessions() throws Exception {
+        insertGameSession(gameTypeId, player1Id, player2Id, "ACTIVE", null);
+        insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        insertGameSession(gameTypeId, player1Id, player2Id, "ABANDONED", player2Id);
+
+        assertEquals(1, gameSessionDao.countActive());
+    }
+
+    @Test
+    void countStartedToday_excludesSessionsStartedOnEarlierDays() throws Exception {
+        insertGameSession(gameTypeId, player1Id, player2Id, "ACTIVE", null);
+        insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+        insertGameSessionStartedDaysAgo(gameTypeId, player1Id, player2Id, 2);
+
+        assertEquals(2, gameSessionDao.countStartedToday());
+    }
+
+    @Test
+    void findMovesForSession_returnsMovesInOrder() throws Exception {
+        int sessionId = insertActiveSession(player1Id, player2Id, gameTypeId);
+        gameSessionDao.recordMove(new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player2Id, null, "{\"pieces\":{\"a3\":\"b\"}}"),
+                player1Id, "{\"path\":[\"b2\",\"a3\"]}");
+        gameSessionDao.recordMove(new GameStateDTO(sessionId, gameTypeId, player1Id, player2Id,
+                GameStatus.ACTIVE, player1Id, null, "{\"pieces\":{\"a4\":\"b\"}}"),
+                player2Id, "{\"path\":[\"b7\",\"a6\"]}");
+
+        List<com.matchmaker.common.dto.MoveDTO> moves = gameSessionDao.findMovesForSession(sessionId);
+
+        assertEquals(2, moves.size());
+        assertEquals(1, moves.get(0).getMoveNumber());
+        assertEquals(player1Id, moves.get(0).getUserId());
+        assertEquals("{\"path\":[\"b2\",\"a3\"]}", moves.get(0).getPayload());
+        assertEquals(2, moves.get(1).getMoveNumber());
+        assertEquals(player2Id, moves.get(1).getUserId());
+    }
+
+    @Test
+    void findMovesForSession_unknownSession_returnsEmptyList() {
+        assertTrue(gameSessionDao.findMovesForSession(999999).isEmpty());
     }
 
     @Test
@@ -264,6 +384,26 @@ class GameSessionDaoTest {
         assertTrue(gameSessionDao.currentTurnStartedAt(999999).isEmpty());
     }
 
+    private void insertWaitingQueueRow(int userId, int gameTypeId) throws Exception {
+        String sql = "INSERT INTO MatchmakingQueue (UserID, GameTypeID, Status) VALUES (?, ?, 'WAITING')";
+        try (Connection conn = DATA_SOURCE.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, gameTypeId);
+            stmt.executeUpdate();
+        }
+    }
+
+    private int countWaitingQueueRowsFor(int userId) throws Exception {
+        String sql = "SELECT COUNT(*) FROM MatchmakingQueue WHERE UserID = ? AND Status = 'WAITING'";
+        try (Connection conn = DATA_SOURCE.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
     private int insertActiveSession(int player1Id, int player2Id, int gameTypeId) throws Exception {
         String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID) "
                 + "VALUES (?, ?, ?, 'ACTIVE', ?)";
@@ -384,6 +524,24 @@ class GameSessionDaoTest {
             } else {
                 stmt.setNull(5, Types.INTEGER);
             }
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    private int insertGameSessionStartedDaysAgo(int gameTypeId, int player1Id, int player2Id, int daysAgo)
+            throws Exception {
+        String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, StartTime) "
+                + "VALUES (?, ?, ?, 'ACTIVE', DATE_SUB(NOW(), INTERVAL ? DAY))";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setInt(4, daysAgo);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();

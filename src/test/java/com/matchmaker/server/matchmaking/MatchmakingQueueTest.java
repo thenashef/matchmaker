@@ -56,6 +56,39 @@ class MatchmakingQueueTest {
     }
 
     @Test
+    void countWaiting_reflectsRowsCurrentlyWaiting() throws Exception {
+        int aliceId = insertUser("alice");
+        int bobId = insertUser("bob");
+
+        assertEquals(0, matchmakingQueue.countWaiting());
+
+        matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
+        assertEquals(1, matchmakingQueue.countWaiting());
+
+        matchmakingQueue.join(bobId, gameTypeId, INITIAL_BOARD);
+        assertEquals(0, matchmakingQueue.countWaiting(), "pairing should clear the queue");
+    }
+
+    @Test
+    void join_earliestCandidateAlreadyHasAnActiveSession_skipsAndDeletesTheStaleRowThenEnqueuesCaller() throws Exception {
+        int aliceId = insertUser("alice");
+        int bobId = insertUser("bob");
+        int carolId = insertUser("carol");
+
+        // A stale queue row: bob queued, but is now already playing (e.g. drafted into a rematch
+        // by a different opponent after queueing) -- his row should never have been left behind,
+        // but this proves join() is defensive about it regardless.
+        matchmakingQueue.join(bobId, gameTypeId, INITIAL_BOARD);
+        insertActiveSessionDirectly(bobId, carolId, gameTypeId);
+
+        GameStateDTO result = matchmakingQueue.join(aliceId, gameTypeId, INITIAL_BOARD);
+
+        assertNull(result, "alice must not be paired with bob, who is already in a different active game");
+        assertFalse(hasQueueRowFor(bobId, gameTypeId), "the stale row should be cleaned up");
+        assertTrue(hasQueueRowFor(aliceId, gameTypeId), "alice should be enqueued since no valid opponent was found");
+    }
+
+    @Test
     void join_opponentWaiting_returnsMatchedSessionAndClearsQueue() throws Exception {
         int aliceId = insertUser("alice");
         int bobId = insertUser("bob");
@@ -216,6 +249,30 @@ class MatchmakingQueueTest {
             startSignal.await();
             return matchmakingQueue.join(userId, gameTypeId, INITIAL_BOARD);
         };
+    }
+
+    private boolean hasQueueRowFor(int userId, int gameTypeId) throws Exception {
+        String sql = "SELECT 1 FROM MatchmakingQueue WHERE UserID = ? AND GameTypeID = ? AND Status = 'WAITING'";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, gameTypeId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void insertActiveSessionDirectly(int player1Id, int player2Id, int gameTypeId) throws Exception {
+        String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID) "
+                + "VALUES (?, ?, ?, 'ACTIVE', ?)";
+        try (Connection conn = DATA_SOURCE.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setInt(4, player1Id);
+            stmt.executeUpdate();
+        }
     }
 
     private int countQueueRows() throws Exception {

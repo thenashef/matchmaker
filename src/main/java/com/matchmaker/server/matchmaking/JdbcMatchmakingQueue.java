@@ -12,6 +12,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 
 public class JdbcMatchmakingQueue implements MatchmakingQueue {
 
@@ -54,6 +56,19 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
         }
     }
 
+    @Override
+    public int countWaiting() {
+        String sql = "SELECT COUNT(*) FROM MatchmakingQueue WHERE Status = 'WAITING'";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to count waiting matchmaking queue entries", e);
+        }
+    }
+
     private GameStateDTO pairOrEnqueue(Connection conn, int userId, int gameTypeId, String initialBoardState)
             throws SQLException, AlreadyInGameException {
         String findActiveSessionSql = "SELECT ID FROM GameSession "
@@ -83,60 +98,81 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
             return null;
         }
 
-        Integer opponentQueueId = null;
-        Integer opponentUserId = null;
-
-        String findOpponentSql = "SELECT ID, UserID FROM MatchmakingQueue "
+        // Ordered candidates rather than a single LIMIT 1: a candidate can be stale (e.g. they were
+        // drafted into a rematch by their other-game opponent, or force-ended, since they queued) --
+        // skip and clean up any such row rather than pairing the caller with someone already playing.
+        List<int[]> candidates = new ArrayList<>();
+        String findCandidatesSql = "SELECT ID, UserID FROM MatchmakingQueue "
                 + "WHERE GameTypeID = ? AND UserID != ? AND Status = 'WAITING' "
-                + "ORDER BY JoinedAt ASC, ID ASC LIMIT 1";
-        try (PreparedStatement stmt = conn.prepareStatement(findOpponentSql)) {
+                + "ORDER BY JoinedAt ASC, ID ASC";
+        try (PreparedStatement stmt = conn.prepareStatement(findCandidatesSql)) {
             stmt.setInt(1, gameTypeId);
             stmt.setInt(2, userId);
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    opponentQueueId = rs.getInt("ID");
-                    opponentUserId = rs.getInt("UserID");
+                while (rs.next()) {
+                    candidates.add(new int[] {rs.getInt("ID"), rs.getInt("UserID")});
                 }
             }
         }
 
-        if (opponentUserId == null) {
-            String insertQueueRowSql = "INSERT INTO MatchmakingQueue (UserID, GameTypeID, Status, JoinedAt) "
-                    + "VALUES (?, ?, 'WAITING', ?)";
-            try (PreparedStatement stmt = conn.prepareStatement(insertQueueRowSql)) {
-                stmt.setInt(1, userId);
-                stmt.setInt(2, gameTypeId);
-                stmt.setTimestamp(3, new Timestamp(System.currentTimeMillis()));
+        for (int[] candidate : candidates) {
+            int candidateQueueId = candidate[0];
+            int candidateUserId = candidate[1];
+            if (hasActiveSession(conn, candidateUserId)) {
+                deleteQueueRow(conn, candidateQueueId);
+                continue;
+            }
+
+            String insertSessionSql = "INSERT INTO GameSession "
+                    + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, BoardState, "
+                    + "TurnStartedAt, StartTime) "
+                    + "VALUES (?, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())";
+            int sessionId;
+            try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
+                stmt.setInt(1, gameTypeId);
+                stmt.setInt(2, candidateUserId);
+                stmt.setInt(3, userId);
+                stmt.setInt(4, candidateUserId);
+                stmt.setString(5, initialBoardState);
                 stmt.executeUpdate();
+                try (ResultSet keys = stmt.getGeneratedKeys()) {
+                    keys.next();
+                    sessionId = keys.getInt(1);
+                }
             }
-            return null;
+
+            deleteQueueRow(conn, candidateQueueId);
+
+            return new GameStateDTO(sessionId, gameTypeId, candidateUserId, userId,
+                    GameStatus.ACTIVE, candidateUserId, null, initialBoardState);
         }
 
-        String insertSessionSql = "INSERT INTO GameSession "
-                + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, BoardState, "
-                + "TurnStartedAt, StartTime) "
-                + "VALUES (?, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())";
-        int sessionId;
-        try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
-            stmt.setInt(1, gameTypeId);
-            stmt.setInt(2, opponentUserId);
-            stmt.setInt(3, userId);
-            stmt.setInt(4, opponentUserId);
-            stmt.setString(5, initialBoardState);
-            stmt.executeUpdate();
-            try (ResultSet keys = stmt.getGeneratedKeys()) {
-                keys.next();
-                sessionId = keys.getInt(1);
-            }
-        }
-
-        String deleteQueueRowSql = "DELETE FROM MatchmakingQueue WHERE ID = ?";
-        try (PreparedStatement stmt = conn.prepareStatement(deleteQueueRowSql)) {
-            stmt.setInt(1, opponentQueueId);
+        String insertQueueRowSql = "INSERT INTO MatchmakingQueue (UserID, GameTypeID, Status, JoinedAt) "
+                + "VALUES (?, ?, 'WAITING', ?)";
+        try (PreparedStatement stmt = conn.prepareStatement(insertQueueRowSql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, gameTypeId);
+            stmt.setTimestamp(3, new Timestamp(System.currentTimeMillis()));
             stmt.executeUpdate();
         }
+        return null;
+    }
 
-        return new GameStateDTO(sessionId, gameTypeId, opponentUserId, userId,
-                GameStatus.ACTIVE, opponentUserId, null, initialBoardState);
+    private boolean hasActiveSession(Connection conn, int userId) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT ID FROM GameSession WHERE (Player1ID = ? OR Player2ID = ?) AND Status = 'ACTIVE' LIMIT 1")) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private void deleteQueueRow(Connection conn, int queueId) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM MatchmakingQueue WHERE ID = ?")) {
+            stmt.setInt(1, queueId);
+            stmt.executeUpdate();
+        }
     }
 }

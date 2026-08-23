@@ -28,10 +28,21 @@
             <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
         </GridPane>
     </center>
+    <right>
+        <VBox spacing="6" prefWidth="300.0">
+            <BorderPane.margin><Insets top="10" right="10" bottom="10" left="0"/></BorderPane.margin>
+            <Label text="Chat" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <ListView fx:id="chatListView" VBox.vgrow="ALWAYS"/>
+            <HBox spacing="6">
+                <TextField fx:id="chatInputField" promptText="Type a message..." HBox.hgrow="ALWAYS" onAction="#onSendChat"/>
+                <Button fx:id="chatSendButton" text="Send" onAction="#onSendChat"/>
+            </HBox>
+        </VBox>
+    </right>
     <bottom>
         <VBox spacing="8" alignment="CENTER">
             <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
-            <Button fx:id="backToLobbyButton" text="Back to Lobby" onAction="#onBackToLobby" visible="false"/>
+            <Button fx:id="resignButton" text="Resign" onAction="#onResign"/>
         </VBox>
     </bottom>
 </BorderPane>

@@ -1,6 +1,7 @@
 package com.matchmaker.server;
 
 import com.matchmaker.common.dto.GameStateDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.server.dao.GameSessionDao;
@@ -197,6 +198,11 @@ class SessionWatchdogTest {
         }
 
         @Override
+        public Optional<GameStateDTO> findById(int sessionId) {
+            return delegate.findById(sessionId);
+        }
+
+        @Override
         public List<GameStateDTO> findAllActive() {
             if (alwaysThrowOnFindAllActive) {
                 throw new RuntimeException("simulated DB failure");
@@ -225,6 +231,27 @@ class SessionWatchdogTest {
                 throw new RuntimeException("simulated DB failure for session " + sessionId);
             }
             return delegate.currentTurnStartedAt(sessionId);
+        }
+
+        @Override
+        public int countActive() {
+            return delegate.countActive();
+        }
+
+        @Override
+        public int countStartedToday() {
+            return delegate.countStartedToday();
+        }
+
+        @Override
+        public List<MoveDTO> findMovesForSession(int sessionId) {
+            return delegate.findMovesForSession(sessionId);
+        }
+
+        @Override
+        public GameStateDTO createRematch(int finishedSessionId, String initialBoardState)
+                throws com.matchmaker.common.exceptions.AlreadyInGameException {
+            return delegate.createRematch(finishedSessionId, initialBoardState);
         }
     }
 }

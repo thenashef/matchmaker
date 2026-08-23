@@ -2,10 +2,12 @@ package com.matchmaker.server.dao;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class InMemoryUserDao implements UserDao {
@@ -14,12 +16,12 @@ public class InMemoryUserDao implements UserDao {
     private final AtomicInteger nextId = new AtomicInteger(1);
 
     @Override
-    public synchronized Optional<UserRecord> insert(String username, String passwordHash) {
+    public synchronized Optional<UserRecord> insert(String username, String passwordHash, boolean isAdmin) {
         if (usersByUsername.containsKey(username)) {
             return Optional.empty();
         }
         UserRecord record = new UserRecord(nextId.getAndIncrement(), username, passwordHash,
-                false, 0, 0, 0, 1200, LocalDateTime.now());
+                isAdmin, 0, 0, 0, 1200, LocalDateTime.now());
         usersByUsername.put(username, record);
         return Optional.of(record);
     }
@@ -37,6 +39,17 @@ public class InMemoryUserDao implements UserDao {
     @Override
     public synchronized List<UserRecord> findAll() {
         return new ArrayList<>(usersByUsername.values());
+    }
+
+    @Override
+    public synchronized Set<Integer> findAdminUserIds() {
+        Set<Integer> result = new HashSet<>();
+        for (UserRecord record : usersByUsername.values()) {
+            if (record.admin()) {
+                result.add(record.id());
+            }
+        }
+        return result;
     }
 
     public synchronized void markAdmin(int userId) {

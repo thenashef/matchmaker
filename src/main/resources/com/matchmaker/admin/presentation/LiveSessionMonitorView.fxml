@@ -24,6 +24,7 @@
         <HBox spacing="10" alignment="CENTER">
             <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
             <Button fx:id="forceEndButton" text="Force End Session" onAction="#onForceEndSession"/>
+            <Button fx:id="exportLogButton" text="Export Log" onAction="#onExportLog"/>
             <Button fx:id="backButton" text="Back to Dashboard" onAction="#onBackToDashboard"/>
         </HBox>
     </bottom>

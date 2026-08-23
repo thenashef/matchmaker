@@ -1,5 +1,6 @@
 package com.matchmaker.client.communication;
 
+import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
@@ -150,6 +151,65 @@ public class RmiJmsServerConnection implements ServerConnection {
             return playerService.legalContinuations(sessionToken, gameSessionId, partialMovePayload);
         } catch (RemoteException e) {
             throw new ServerCommunicationException("legalContinuations() failed", e);
+        }
+    }
+
+    @Override
+    public GameStateDTO resign(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException {
+        try {
+            return playerService.resign(sessionToken, gameSessionId);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("resign() failed", e);
+        }
+    }
+
+    @Override
+    public void sendChatMessage(String sessionToken, int gameSessionId, String content)
+            throws AuthenticationException, NotParticipantException {
+        try {
+            playerService.sendChatMessage(sessionToken, gameSessionId, content);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("sendChatMessage() failed", e);
+        }
+    }
+
+    @Override
+    public List<ChatMessageDTO> getChatHistory(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException {
+        try {
+            return playerService.getChatHistory(sessionToken, gameSessionId);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("getChatHistory() failed", e);
+        }
+    }
+
+    @Override
+    public GameStateDTO rematch(String sessionToken, int finishedSessionId)
+            throws AuthenticationException, NotParticipantException, AlreadyInGameException {
+        try {
+            return playerService.rematch(sessionToken, finishedSessionId);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("rematch() failed", e);
+        }
+    }
+
+    @Override
+    public UserDTO getProfile(String sessionToken) throws AuthenticationException {
+        try {
+            return playerService.getProfile(sessionToken);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("getProfile() failed", e);
+        }
+    }
+
+    @Override
+    public UserDTO getOpponentProfile(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException {
+        try {
+            return playerService.getOpponentProfile(sessionToken, gameSessionId);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("getOpponentProfile() failed", e);
         }
     }
 

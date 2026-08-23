@@ -1,12 +1,16 @@
 package com.matchmaker.server.rmi;
 
+import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.exceptions.AuthenticationException;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotAdminException;
+import com.matchmaker.common.exceptions.UsernameTakenException;
 import com.matchmaker.common.rmi.AdminService;
 import com.matchmaker.server.SessionManager;
 import com.matchmaker.server.dao.GameSessionDao;
@@ -15,10 +19,15 @@ import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.dao.UserRecord;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
+import com.matchmaker.server.matchmaking.MatchmakingQueue;
+import org.mindrot.jbcrypt.BCrypt;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -31,9 +40,12 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     private final GameTypeDao gameTypeDao;
     private final GameSessionDao gameSessionDao;
     private final GameEventPublisher gameEventPublisher;
+    private final MatchmakingQueue matchmakingQueue;
+    private final Duration onlineLivenessWindow;
 
     public AdminServiceImpl(SessionManager sessionManager, UserDao userDao, GameTypeDao gameTypeDao,
-                             GameSessionDao gameSessionDao, GameEventPublisher gameEventPublisher)
+                             GameSessionDao gameSessionDao, GameEventPublisher gameEventPublisher,
+                             MatchmakingQueue matchmakingQueue, Duration onlineLivenessWindow)
             throws RemoteException {
         super();
         this.sessionManager = sessionManager;
@@ -41,6 +53,8 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
         this.gameTypeDao = gameTypeDao;
         this.gameSessionDao = gameSessionDao;
         this.gameEventPublisher = gameEventPublisher;
+        this.matchmakingQueue = matchmakingQueue;
+        this.onlineLivenessWindow = onlineLivenessWindow;
     }
 
     @Override
@@ -61,10 +75,24 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     public List<UserDTO> listUsers(String sessionToken)
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
-        return userDao.findAll().stream()
-                .map(record -> new UserDTO(record.id(), record.username(), record.admin(),
-                        record.wins(), record.losses(), record.draws(), record.rating()))
-                .toList();
+        return userDao.findAll().stream().map(AdminServiceImpl::toUserDTO).toList();
+    }
+
+    @Override
+    public UserDTO createUser(String sessionToken, String username, String password, boolean isAdmin)
+            throws RemoteException, AuthenticationException, NotAdminException, UsernameTakenException,
+                   InvalidRegistrationException {
+        UserRecord creatingAdmin = requireAdmin(sessionToken);
+        UserValidation.validateRegistration(username, password, isAdmin);
+        String passwordHash = BCrypt.hashpw(password, BCrypt.gensalt());
+        Optional<UserRecord> inserted = userDao.insert(username, passwordHash, isAdmin);
+        if (inserted.isEmpty()) {
+            throw new UsernameTakenException("Username '" + username + "' is already taken");
+        }
+        if (isAdmin) {
+            LOG.log(Level.INFO, "Admin account '" + username + "' created by admin user " + creatingAdmin.id());
+        }
+        return toUserDTO(inserted.get());
     }
 
     @Override
@@ -86,6 +114,30 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
                 LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of force-end", e);
             }
         });
+    }
+
+    @Override
+    public AdminDashboardStatsDTO getDashboardStats(String sessionToken)
+            throws RemoteException, AuthenticationException, NotAdminException {
+        requireAdmin(sessionToken);
+        Set<Integer> adminIds = userDao.findAdminUserIds();
+        long onlinePlayers = sessionManager.onlineUserIds(onlineLivenessWindow).stream()
+                .filter(userId -> !adminIds.contains(userId))
+                .count();
+        return new AdminDashboardStatsDTO((int) onlinePlayers, gameSessionDao.countActive(),
+                gameSessionDao.countStartedToday(), matchmakingQueue.countWaiting());
+    }
+
+    @Override
+    public List<MoveDTO> listMoves(String sessionToken, int gameSessionId)
+            throws RemoteException, AuthenticationException, NotAdminException {
+        requireAdmin(sessionToken);
+        return gameSessionDao.findMovesForSession(gameSessionId);
+    }
+
+    private static UserDTO toUserDTO(UserRecord record) {
+        return new UserDTO(record.id(), record.username(), record.admin(),
+                record.wins(), record.losses(), record.draws(), record.rating());
     }
 
     private UserRecord requireAdmin(String sessionToken) throws AuthenticationException, NotAdminException {

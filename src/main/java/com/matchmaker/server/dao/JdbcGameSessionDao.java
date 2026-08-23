@@ -1,13 +1,16 @@
 package com.matchmaker.server.dao;
 
 import com.matchmaker.common.dto.GameStateDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameStatus;
+import com.matchmaker.common.exceptions.AlreadyInGameException;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
@@ -26,7 +29,7 @@ public class JdbcGameSessionDao implements GameSessionDao {
     @Override
     public List<GameStateDTO> findFinishedSessionsForUser(int userId) {
         String sql = "SELECT ID, GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, WinnerID, BoardState "
-                + "FROM GameSession WHERE (Player1ID = ? OR Player2ID = ?) AND Status = 'FINISHED' "
+                + "FROM GameSession WHERE (Player1ID = ? OR Player2ID = ?) AND Status IN ('FINISHED', 'ABANDONED') "
                 + "ORDER BY EndTime DESC";
         List<GameStateDTO> result = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
@@ -73,6 +76,15 @@ public class JdbcGameSessionDao implements GameSessionDao {
     }
 
     @Override
+    public Optional<GameStateDTO> findById(int sessionId) {
+        try (Connection conn = dataSource.getConnection()) {
+            return findAnyById(conn, sessionId);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to find game session " + sessionId, e);
+        }
+    }
+
+    @Override
     public List<GameStateDTO> findAllActive() {
         String sql = "SELECT ID, GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, WinnerID, BoardState "
                 + "FROM GameSession WHERE Status = 'ACTIVE' ORDER BY StartTime";
@@ -86,6 +98,52 @@ public class JdbcGameSessionDao implements GameSessionDao {
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to list active sessions", e);
+        }
+    }
+
+    @Override
+    public int countActive() {
+        String sql = "SELECT COUNT(*) FROM GameSession WHERE Status = 'ACTIVE'";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to count active sessions", e);
+        }
+    }
+
+    @Override
+    public int countStartedToday() {
+        String sql = "SELECT COUNT(*) FROM GameSession WHERE DATE(StartTime) = CURDATE()";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to count sessions started today", e);
+        }
+    }
+
+    @Override
+    public List<MoveDTO> findMovesForSession(int sessionId) {
+        String sql = "SELECT SessionID, UserID, MoveNumber, Payload FROM Move "
+                + "WHERE SessionID = ? ORDER BY MoveNumber";
+        List<MoveDTO> result = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, sessionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new MoveDTO(rs.getInt("SessionID"), rs.getInt("UserID"),
+                            rs.getInt("MoveNumber"), rs.getString("Payload")));
+                }
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new DaoException("Failed to find moves for session " + sessionId, e);
         }
     }
 
@@ -188,6 +246,119 @@ public class JdbcGameSessionDao implements GameSessionDao {
                     return Optional.empty();
                 }
                 return Optional.of(mapRow(rs));
+            }
+        }
+    }
+
+    @Override
+    public synchronized GameStateDTO createRematch(int finishedSessionId, String initialBoardState)
+            throws AlreadyInGameException {
+        try (Connection conn = dataSource.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                Integer existingRematchId = findRematchSessionId(conn, finishedSessionId);
+                if (existingRematchId != null) {
+                    GameStateDTO existing = findAnyById(conn, existingRematchId)
+                            .orElseThrow(() -> new DaoException("RematchSessionID " + existingRematchId
+                                    + " on session " + finishedSessionId + " does not point to a real session", null));
+                    if (existing.getStatus() != GameStatus.ACTIVE) {
+                        // The earlier rematch already ended (e.g. abandoned) -- idempotency exists to
+                        // collapse near-simultaneous double-clicks onto one live session, not to keep
+                        // handing back a dead one. Surface this clearly rather than dead-ending the caller.
+                        throw new AlreadyInGameException("The rematch of session " + finishedSessionId
+                                + " already ended (session " + existingRematchId + ")");
+                    }
+                    conn.commit();
+                    return existing;
+                }
+
+                GameStateDTO finished = findAnyById(conn, finishedSessionId)
+                        .orElseThrow(() -> new DaoException("No such game session " + finishedSessionId, null));
+
+                int newPlayer1Id = finished.getPlayer2Id();
+                int newPlayer2Id = finished.getPlayer1Id();
+                requireNeitherPlayerHasAnActiveSession(conn, newPlayer1Id, newPlayer2Id);
+
+                int newSessionId;
+                String insertSessionSql = "INSERT INTO GameSession "
+                        + "(GameTypeID, Player1ID, Player2ID, Status, CurrentTurnUserID, BoardState, "
+                        + "TurnStartedAt, StartTime) VALUES (?, ?, ?, 'ACTIVE', ?, ?, NOW(), NOW())";
+                try (PreparedStatement stmt = conn.prepareStatement(insertSessionSql, Statement.RETURN_GENERATED_KEYS)) {
+                    stmt.setInt(1, finished.getGameTypeId());
+                    stmt.setInt(2, newPlayer1Id);
+                    stmt.setInt(3, newPlayer2Id);
+                    stmt.setInt(4, newPlayer1Id);
+                    stmt.setString(5, initialBoardState);
+                    stmt.executeUpdate();
+                    try (ResultSet keys = stmt.getGeneratedKeys()) {
+                        keys.next();
+                        newSessionId = keys.getInt(1);
+                    }
+                }
+
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "UPDATE GameSession SET RematchSessionID = ? WHERE ID = ?")) {
+                    stmt.setInt(1, newSessionId);
+                    stmt.setInt(2, finishedSessionId);
+                    stmt.executeUpdate();
+                }
+
+                // Both players are now in this new ACTIVE session -- any queue row either of them left
+                // behind (e.g. B queued for a fresh game while A clicked Rematch) is now stale and would
+                // otherwise let a third player get paired with a user who is already in a game.
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "DELETE FROM MatchmakingQueue WHERE UserID IN (?, ?) AND Status = 'WAITING'")) {
+                    stmt.setInt(1, newPlayer1Id);
+                    stmt.setInt(2, newPlayer2Id);
+                    stmt.executeUpdate();
+                }
+
+                GameStateDTO created = new GameStateDTO(newSessionId, finished.getGameTypeId(),
+                        newPlayer1Id, newPlayer2Id, GameStatus.ACTIVE, newPlayer1Id, null, initialBoardState);
+                conn.commit();
+                return created;
+            } catch (AlreadyInGameException e) {
+                conn.rollback();
+                throw e;
+            } catch (SQLException | RuntimeException e) {
+                conn.rollback();
+                throw new DaoException("Failed to create rematch for session " + finishedSessionId, e);
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to create rematch for session " + finishedSessionId, e);
+        }
+    }
+
+    private Integer findRematchSessionId(Connection conn, int sessionId) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT RematchSessionID FROM GameSession WHERE ID = ?")) {
+            stmt.setInt(1, sessionId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                int value = rs.getInt("RematchSessionID");
+                return rs.wasNull() ? null : value;
+            }
+        }
+    }
+
+    private void requireNeitherPlayerHasAnActiveSession(Connection conn, int player1Id, int player2Id)
+            throws SQLException, AlreadyInGameException {
+        String sql = "SELECT ID FROM GameSession "
+                + "WHERE (Player1ID IN (?, ?) OR Player2ID IN (?, ?)) AND Status = 'ACTIVE' LIMIT 1";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, player1Id);
+            stmt.setInt(2, player2Id);
+            stmt.setInt(3, player1Id);
+            stmt.setInt(4, player2Id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    throw new AlreadyInGameException(
+                            "A participant of session is already in a different active game");
+                }
             }
         }
     }

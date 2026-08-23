@@ -2,9 +2,11 @@ package com.matchmaker.admin.logic;
 
 import com.matchmaker.admin.communication.AdminConnection;
 import com.matchmaker.admin.communication.Subscription;
+import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.dto.UserDTO;
 import javafx.application.Platform;
 
@@ -77,6 +79,11 @@ public class AdminClientService {
         runAsync(() -> adminConnection.listUsers(sessionToken), onSuccess, onError);
     }
 
+    public void createUser(String username, String password, boolean isAdmin,
+                            Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> adminConnection.createUser(sessionToken, username, password, isAdmin), onSuccess, onError);
+    }
+
     public void listActiveSessions(Consumer<List<GameStateDTO>> onSuccess, Consumer<Throwable> onError) {
         runAsync(() -> adminConnection.listActiveSessions(sessionToken), onSuccess, onError);
     }
@@ -84,6 +91,14 @@ public class AdminClientService {
     public void forceEndSession(int gameSessionId, Runnable onSuccess, Consumer<Throwable> onError) {
         runAsync(() -> { adminConnection.forceEndSession(sessionToken, gameSessionId); return null; },
                 ignored -> onSuccess.run(), onError);
+    }
+
+    public void getDashboardStats(Consumer<AdminDashboardStatsDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> adminConnection.getDashboardStats(sessionToken), onSuccess, onError);
+    }
+
+    public void listMoves(int gameSessionId, Consumer<List<MoveDTO>> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> adminConnection.listMoves(sessionToken, gameSessionId), onSuccess, onError);
     }
 
     public void monitorSession(int sessionId, Consumer<GameEventDTO> onEvent) {

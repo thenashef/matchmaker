@@ -28,4 +28,9 @@ public class InMemoryMatchmakingQueue implements MatchmakingQueue {
     public synchronized void cancel(int userId) {
         waitingUserIdByGameTypeId.values().removeIf(waitingUserId -> waitingUserId.equals(userId));
     }
+
+    @Override
+    public synchronized int countWaiting() {
+        return waitingUserIdByGameTypeId.size();
+    }
 }

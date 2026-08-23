@@ -1,5 +1,6 @@
 package com.matchmaker.client.communication;
 
+import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
@@ -38,6 +39,23 @@ public interface ServerConnection {
 
     List<String> legalContinuations(String sessionToken, int gameSessionId, String partialMovePayload)
             throws AuthenticationException, NotParticipantException, NotYourTurnException;
+
+    GameStateDTO resign(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException;
+
+    void sendChatMessage(String sessionToken, int gameSessionId, String content)
+            throws AuthenticationException, NotParticipantException;
+
+    List<ChatMessageDTO> getChatHistory(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException;
+
+    GameStateDTO rematch(String sessionToken, int finishedSessionId)
+            throws AuthenticationException, NotParticipantException, AlreadyInGameException;
+
+    UserDTO getProfile(String sessionToken) throws AuthenticationException;
+
+    UserDTO getOpponentProfile(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotParticipantException;
 
     Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener);
 

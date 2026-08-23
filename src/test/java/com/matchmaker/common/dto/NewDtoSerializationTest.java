@@ -66,6 +66,30 @@ class NewDtoSerializationTest {
     }
 
     @Test
+    void gameEventDTO_chatMessageVariant_survivesSerializationRoundTrip() throws Exception {
+        GameEventDTO original = new GameEventDTO(GameEventType.CHAT_MESSAGE, 7, 42, "good luck");
+
+        GameEventDTO restored = roundTrip(original);
+
+        assertEquals(original.getType(), restored.getType());
+        assertEquals(original.getSessionId(), restored.getSessionId());
+        assertEquals(original.getChatSenderUserId(), restored.getChatSenderUserId());
+        assertEquals(original.getChatContent(), restored.getChatContent());
+    }
+
+    @Test
+    void adminDashboardStatsDTO_survivesSerializationRoundTrip() throws Exception {
+        AdminDashboardStatsDTO original = new AdminDashboardStatsDTO(4, 2, 9, 1);
+
+        AdminDashboardStatsDTO restored = roundTrip(original);
+
+        assertEquals(original.getOnlinePlayers(), restored.getOnlinePlayers());
+        assertEquals(original.getActiveGames(), restored.getActiveGames());
+        assertEquals(original.getGamesToday(), restored.getGamesToday());
+        assertEquals(original.getOpenInQueue(), restored.getOpenInQueue());
+    }
+
+    @Test
     void gameEventDTO_survivesSerializationRoundTrip() throws Exception {
         GameStateDTO gameState = new GameStateDTO(7, 1, 42, 99, GameStatus.ACTIVE, 42, null, null);
         GameEventDTO original = new GameEventDTO(GameEventType.MATCH_FOUND, 7, gameState);

@@ -1,12 +1,16 @@
 package com.matchmaker.admin.communication;
 
+import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.exceptions.AuthenticationException;
+import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotAdminException;
+import com.matchmaker.common.exceptions.UsernameTakenException;
 import com.matchmaker.common.rmi.AdminService;
 import com.matchmaker.common.rmi.AuthService;
 import org.apache.activemq.ActiveMQConnectionFactory;
@@ -119,6 +123,16 @@ public class RmiJmsAdminConnection implements AdminConnection {
     }
 
     @Override
+    public UserDTO createUser(String sessionToken, String username, String password, boolean isAdmin)
+            throws AuthenticationException, NotAdminException, UsernameTakenException, InvalidRegistrationException {
+        try {
+            return adminService.createUser(sessionToken, username, password, isAdmin);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("createUser() failed", e);
+        }
+    }
+
+    @Override
     public List<GameStateDTO> listActiveSessions(String sessionToken)
             throws AuthenticationException, NotAdminException {
         try {
@@ -135,6 +149,26 @@ public class RmiJmsAdminConnection implements AdminConnection {
             adminService.forceEndSession(sessionToken, gameSessionId);
         } catch (RemoteException e) {
             throw new AdminCommunicationException("forceEndSession() failed", e);
+        }
+    }
+
+    @Override
+    public AdminDashboardStatsDTO getDashboardStats(String sessionToken)
+            throws AuthenticationException, NotAdminException {
+        try {
+            return adminService.getDashboardStats(sessionToken);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("getDashboardStats() failed", e);
+        }
+    }
+
+    @Override
+    public List<MoveDTO> listMoves(String sessionToken, int gameSessionId)
+            throws AuthenticationException, NotAdminException {
+        try {
+            return adminService.listMoves(sessionToken, gameSessionId);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("listMoves() failed", e);
         }
     }
 

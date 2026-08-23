@@ -10,8 +10,10 @@
     <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
     <Label text="Dashboard" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
     <HBox spacing="20">
-        <Label fx:id="userCountLabel"/>
-        <Label fx:id="activeSessionCountLabel"/>
+        <Label fx:id="onlinePlayersLabel"/>
+        <Label fx:id="activeGamesLabel"/>
+        <Label fx:id="gamesTodayLabel"/>
+        <Label fx:id="openInQueueLabel"/>
     </HBox>
     <Label text="Active Sessions" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
     <TableView fx:id="sessionsTable" VBox.vgrow="ALWAYS">
@@ -27,6 +29,7 @@
     <HBox spacing="10">
         <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
         <Button fx:id="newGameTypeButton" text="New Game Type" onAction="#onNewGameType"/>
+        <Button fx:id="usersButton" text="Users" onAction="#onUsers"/>
     </HBox>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true"/>
 </VBox>

@@ -1,15 +1,18 @@
 package com.matchmaker.admin.logic;
 
 import com.matchmaker.admin.communication.InMemoryAdminConnection;
+import com.matchmaker.common.dto.AdminDashboardStatsDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.NotAdminException;
+import com.matchmaker.common.exceptions.UsernameTakenException;
 import javafx.application.Platform;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -150,6 +153,38 @@ class AdminClientServiceTest {
     }
 
     @Test
+    void createUser_success_returnsCreatedAndForwardsArguments() throws Exception {
+        adminConnection.setCreateUserResult(new UserDTO(9, "newplayer", false, 0, 0, 0, 1200));
+
+        UserDTO result = this.<UserDTO>await(capture ->
+                service.createUser("newplayer", "goodpassword", false, capture, err -> fail(String.valueOf(err))));
+
+        assertEquals("newplayer", result.getUsername());
+        assertEquals("newplayer", adminConnection.lastCreateUserUsername());
+        assertFalse(adminConnection.lastCreateUserIsAdmin());
+    }
+
+    @Test
+    void createUser_asAdmin_forwardsTheAdminFlag() throws Exception {
+        adminConnection.setCreateUserResult(new UserDTO(10, "newadmin", true, 0, 0, 0, 1200));
+
+        this.<UserDTO>await(capture -> service.createUser("newadmin", "a-genuinely-long-password", true,
+                capture, err -> fail(String.valueOf(err))));
+
+        assertTrue(adminConnection.lastCreateUserIsAdmin(), "the isAdmin flag must reach the connection layer");
+    }
+
+    @Test
+    void createUser_usernameTaken_invokesOnError() throws Exception {
+        adminConnection.setCreateUserUsernameTakenFailure(new UsernameTakenException("taken"));
+
+        Throwable error = this.<Throwable>await(capture ->
+                service.createUser("bob", "goodpassword", false, r -> fail("should not succeed"), capture));
+
+        assertInstanceOf(UsernameTakenException.class, error);
+    }
+
+    @Test
     void listActiveSessions_success_returnsWhatConnectionReturns() throws Exception {
         adminConnection.setActiveSessions(List.of(
                 new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, "board")));
@@ -167,6 +202,30 @@ class AdminClientServiceTest {
 
         assertTrue(called);
         assertTrue(adminConnection.wasForceEndSessionCalled());
+    }
+
+    @Test
+    void getDashboardStats_success_returnsWhatConnectionReturns() throws Exception {
+        adminConnection.setDashboardStats(new AdminDashboardStatsDTO(4, 2, 9, 1));
+
+        AdminDashboardStatsDTO result = this.<AdminDashboardStatsDTO>await(capture ->
+                service.getDashboardStats(capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(4, result.getOnlinePlayers());
+        assertEquals(2, result.getActiveGames());
+        assertEquals(9, result.getGamesToday());
+        assertEquals(1, result.getOpenInQueue());
+    }
+
+    @Test
+    void listMoves_success_returnsWhatConnectionReturns() throws Exception {
+        adminConnection.setMoves(List.of(new MoveDTO(1, 1, 1, "{\"path\":[\"b3\",\"a4\"]}")));
+
+        List<MoveDTO> result = this.<List<MoveDTO>>await(capture ->
+                service.listMoves(7, capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(1, result.size());
+        assertEquals(7, adminConnection.lastListMovesSessionId());
     }
 
     @Test

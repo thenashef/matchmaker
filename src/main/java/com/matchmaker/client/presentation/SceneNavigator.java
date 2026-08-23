@@ -9,8 +9,10 @@ import java.io.IOException;
 
 public class SceneNavigator {
 
-    private static final double WINDOW_WIDTH = 560;
-    private static final double WINDOW_HEIGHT = 700;
+    // Wide enough for the game board (480px) plus a chat side panel on GameBoardView;
+    // other screens are simple centered layouts that just get extra breathing room.
+    private static final double WINDOW_WIDTH = 860;
+    private static final double WINDOW_HEIGHT = 720;
 
     private final Stage stage;
 

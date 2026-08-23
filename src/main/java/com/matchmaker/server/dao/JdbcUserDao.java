@@ -8,8 +8,10 @@ import java.sql.SQLException;
 import java.sql.SQLIntegrityConstraintViolationException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public class JdbcUserDao implements UserDao {
 
@@ -22,12 +24,13 @@ public class JdbcUserDao implements UserDao {
     }
 
     @Override
-    public Optional<UserRecord> insert(String username, String passwordHash) {
-        String sql = "INSERT INTO User (Username, Password) VALUES (?, ?)";
+    public Optional<UserRecord> insert(String username, String passwordHash, boolean isAdmin) {
+        String sql = "INSERT INTO User (Username, Password, IsAdmin) VALUES (?, ?, ?)";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setString(1, username);
             stmt.setString(2, passwordHash);
+            stmt.setBoolean(3, isAdmin);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();
@@ -93,6 +96,22 @@ public class JdbcUserDao implements UserDao {
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to list users", e);
+        }
+    }
+
+    @Override
+    public Set<Integer> findAdminUserIds() {
+        String sql = "SELECT ID FROM User WHERE IsAdmin = TRUE";
+        Set<Integer> result = new HashSet<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(rs.getInt("ID"));
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new DaoException("Failed to list admin user IDs", e);
         }
     }
 

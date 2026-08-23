@@ -1,6 +1,7 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.IllegalMoveException;
@@ -9,8 +10,12 @@ import com.matchmaker.common.exceptions.NotYourTurnException;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.fxml.FXML;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
+import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.media.AudioClip;
@@ -51,7 +56,10 @@ public class GameBoardController {
     @FXML private Label statusLabel;
     @FXML private Label turnTimerLabel;
     @FXML private GridPane boardGrid;
-    @FXML private Button backToLobbyButton;
+    @FXML private Button resignButton;
+    @FXML private ListView<String> chatListView;
+    @FXML private TextField chatInputField;
+    @FXML private Button chatSendButton;
 
     private GameClientService gameClientService;
     private SceneNavigator navigator;
@@ -61,12 +69,63 @@ public class GameBoardController {
     private boolean highlightsLoading = false;
     private int highlightRequestId;
     private Timeline turnCountdown;
+    private boolean navigatedAway = false;
+    private int ratingBeforeGame;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
+        resignButton.managedProperty().bind(resignButton.visibleProperty());
+
+        // Immediate fallback from the cached user, overwritten with a fresh value below -- the
+        // cached rating can be stale from login or an earlier game this session (see GameOverController).
+        ratingBeforeGame = gameClientService.getCurrentUser().getRating();
+        gameClientService.getProfile(
+                freshUser -> ratingBeforeGame = freshUser.getRating(),
+                error -> LOG.log(Level.WARNING, "Failed to refresh profile at game start", error));
+
         GameStateDTO latest = gameClientService.attachGameUpdateListener(this::applyState);
         applyState(latest != null ? latest : initialState);
+        if (navigatedAway) {
+            // applyState already found the game over and navigated to GameOverController (which
+            // also already called leaveGame()) -- don't touch a torn-down gameClientService below.
+            return;
+        }
+
+        // Load history and only then start listening live. This narrows (but doesn't fully close)
+        // the race with a message the opponent sends during the async history round trip: attaching
+        // the listener first risked a duplicate render; this ordering instead risks rarely missing
+        // a message sent in the small gap between the history read and the listener attaching.
+        gameClientService.getChatHistory(currentState.getSessionId(),
+                history -> {
+                    history.forEach(this::appendChatMessage);
+                    gameClientService.attachChatListener(this::appendChatMessage);
+                },
+                error -> {
+                    LOG.log(Level.WARNING, "Failed to load chat history", error);
+                    gameClientService.attachChatListener(this::appendChatMessage);
+                });
+    }
+
+    private void appendChatMessage(ChatMessageDTO message) {
+        boolean mine = message.getUserId() == gameClientService.getCurrentUser().getId();
+        chatListView.getItems().add((mine ? "You: " : "Opponent: ") + message.getContent());
+        chatListView.scrollTo(chatListView.getItems().size() - 1);
+    }
+
+    @FXML
+    private void onSendChat() {
+        String content = chatInputField.getText();
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        chatInputField.clear();
+        gameClientService.sendChatMessage(currentState.getSessionId(), content,
+                () -> { },
+                error -> {
+                    LOG.log(Level.WARNING, "Failed to send chat message", error);
+                    chatListView.getItems().add("(message not sent -- please try again)");
+                });
     }
 
     private void applyState(GameStateDTO state) {
@@ -79,9 +138,17 @@ public class GameBoardController {
         updateStatusLabel(state);
 
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
-        backToLobbyButton.setVisible(ended);
+        resignButton.setVisible(!ended);
+        // The server only accepts chat while the session is ACTIVE (see PlayerServiceImpl); disable
+        // proactively rather than let the user type a "gg" that silently fails to send.
+        chatInputField.setDisable(ended);
+        chatSendButton.setDisable(ended);
 
-        if (isMyTurn() && !ended) {
+        if (ended) {
+            stopTurnCountdown();
+            highlightedSquares = Set.of();
+            goToGameOverIfNotAlready(state);
+        } else if (isMyTurn()) {
             if (TURN_SOUND != null) {
                 TURN_SOUND.play();
             }
@@ -91,6 +158,16 @@ public class GameBoardController {
             stopTurnCountdown();
             highlightedSquares = Set.of();
         }
+    }
+
+    private void goToGameOverIfNotAlready(GameStateDTO finalState) {
+        if (navigatedAway) {
+            return;
+        }
+        navigatedAway = true;
+        GameOverController controller = navigator.show("GameOverView.fxml", "MatchMaker - Game Over");
+        controller.init(gameClientService, navigator, finalState, ratingBeforeGame);
+        gameClientService.leaveGame();
     }
 
     private void refreshHighlights() {
@@ -174,11 +251,11 @@ public class GameBoardController {
             Integer winnerId = state.getWinnerId();
             int myId = gameClientService.getCurrentUser().getId();
             if (winnerId == null) {
-                statusLabel.setText("Game ended -- both players disconnected.");
+                statusLabel.setText("Game ended -- no winner.");
             } else if (winnerId == myId) {
-                statusLabel.setText("You won -- your opponent disconnected or ran out of time.");
+                statusLabel.setText("Game ended -- you won.");
             } else {
-                statusLabel.setText("Game over -- you disconnected or ran out of time.");
+                statusLabel.setText("Game ended -- you lost.");
             }
         } else {
             statusLabel.setText(isMyTurn() ? "Your turn" : "Waiting for opponent...");
@@ -275,12 +352,25 @@ public class GameBoardController {
     }
 
     @FXML
-    private void onBackToLobby() {
-        stopTurnCountdown();
-        gameClientService.leaveGame();
-        LobbyController controller = navigator.show("LobbyView.fxml",
-                "MatchMaker - Lobby (" + gameClientService.getCurrentUser().getUsername() + ")");
-        controller.init(gameClientService, navigator);
+    private void onResign() {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                "Resign this game? Your opponent will be credited the win.", ButtonType.YES, ButtonType.NO);
+        confirmation.showAndWait().ifPresent(response -> {
+            // The confirmation dialog runs a nested event loop, so a push update (e.g. the
+            // opponent winning, or resigning first) can land while it's open -- re-check before acting.
+            if (response != ButtonType.YES || currentState.getStatus() != GameStatus.ACTIVE) {
+                return;
+            }
+            resignButton.setDisable(true);
+            gameClientService.resign(currentState.getSessionId(),
+                    this::applyState,
+                    error -> {
+                        if (currentState.getStatus() == GameStatus.ACTIVE) {
+                            resignButton.setDisable(false);
+                            statusLabel.setText("Failed to resign -- please try again.");
+                        }
+                    });
+        });
     }
 
     private boolean isMyTurn() {

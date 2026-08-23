@@ -14,8 +14,10 @@ import javafx.util.Callback;
 
 public class DashboardController {
 
-    @FXML private Label userCountLabel;
-    @FXML private Label activeSessionCountLabel;
+    @FXML private Label onlinePlayersLabel;
+    @FXML private Label activeGamesLabel;
+    @FXML private Label gamesTodayLabel;
+    @FXML private Label openInQueueLabel;
     @FXML private TableView<GameStateDTO> sessionsTable;
     @FXML private TableColumn<GameStateDTO, Number> sessionIdColumn;
     @FXML private TableColumn<GameStateDTO, Number> gameTypeIdColumn;
@@ -25,6 +27,7 @@ public class DashboardController {
     @FXML private TableColumn<GameStateDTO, Void> monitorColumn;
     @FXML private Button refreshButton;
     @FXML private Button newGameTypeButton;
+    @FXML private Button usersButton;
     @FXML private Label statusLabel;
 
     private AdminClientService adminClientService;
@@ -51,14 +54,17 @@ public class DashboardController {
     }
 
     private void refresh() {
-        adminClientService.listUsers(
-                users -> userCountLabel.setText("Users: " + users.size()),
+        statusLabel.setText("");
+        adminClientService.listActiveSessions(
+                sessions -> sessionsTable.getItems().setAll(sessions),
                 error -> statusLabel.setText(error.getMessage()));
 
-        adminClientService.listActiveSessions(
-                sessions -> {
-                    activeSessionCountLabel.setText("Active sessions: " + sessions.size());
-                    sessionsTable.getItems().setAll(sessions);
+        adminClientService.getDashboardStats(
+                stats -> {
+                    onlinePlayersLabel.setText("Online players: " + stats.getOnlinePlayers());
+                    activeGamesLabel.setText("Active games: " + stats.getActiveGames());
+                    gamesTodayLabel.setText("Games today: " + stats.getGamesToday());
+                    openInQueueLabel.setText("Open in queue: " + stats.getOpenInQueue());
                 },
                 error -> statusLabel.setText(error.getMessage()));
     }
@@ -66,6 +72,12 @@ public class DashboardController {
     @FXML
     private void onNewGameType() {
         AddGameTypeController controller = navigator.show("AddGameTypeView.fxml", "MatchMaker Admin - New Game Type");
+        controller.init(adminClientService, navigator);
+    }
+
+    @FXML
+    private void onUsers() {
+        UsersController controller = navigator.show("UsersView.fxml", "MatchMaker Admin - Users");
         controller.init(adminClientService, navigator);
     }
 

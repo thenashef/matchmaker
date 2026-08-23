@@ -84,6 +84,33 @@ class GameEventPublisherJmsIntegrationTest {
     }
 
     @Test
+    void publishToSession_chatMessageEvent_realConsumerReceivesItOverTheWire() throws Exception {
+        // Regression guard: ChatMessageDTO carries a java.time.LocalDateTime, and ActiveMQ's
+        // trusted-package allow-list here (see RmiJmsServerConnection/RmiJmsAdminConnection/
+        // JmsConnectionFactory) does not include java.time. A CHAT_MESSAGE event must therefore
+        // carry its payload as plain String/Integer fields on GameEventDTO, never a nested
+        // ChatMessageDTO -- this test is the only tier that would catch a regression back to that,
+        // since plain ObjectOutputStream/ObjectInputStream round-trips (unit tests) don't apply
+        // ActiveMQ's ClassLoadingAwareObjectInputStream trusted-package check at all.
+        int sessionId = 7;
+        Topic topic = session.createTopic("session." + sessionId + ".events");
+        MessageConsumer consumer = session.createConsumer(topic);
+
+        GameEventDTO event = new GameEventDTO(GameEventType.CHAT_MESSAGE, sessionId, 42, "good luck");
+
+        publisher.publishToSession(sessionId, event);
+
+        Message received = consumer.receive(2000);
+
+        assertNotNull(received, "expected the chat event to arrive on the session's topic");
+        assertInstanceOf(ObjectMessage.class, received);
+        GameEventDTO receivedEvent = (GameEventDTO) ((ObjectMessage) received).getObject();
+        assertEquals(GameEventType.CHAT_MESSAGE, receivedEvent.getType());
+        assertEquals(42, receivedEvent.getChatSenderUserId());
+        assertEquals("good luck", receivedEvent.getChatContent());
+    }
+
+    @Test
     void publishToSession_bothSubscribersReceiveTheirOwnCopy() throws Exception {
         int sessionId = 7;
         Topic topic = session.createTopic("session." + sessionId + ".events");

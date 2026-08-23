@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -96,6 +97,31 @@ class SessionManagerTest {
     }
 
     @Test
+    void invalidate_clearsLastSeenSoALoggedOutUserDoesNotReadAsOnline() throws Exception {
+        SessionManager sessionManager = new SessionManager();
+        String token = sessionManager.createSession(42);
+        sessionManager.resolve(token);
+        assertTrue(sessionManager.onlineUserIds(Duration.ofMinutes(1)).contains(42));
+
+        sessionManager.invalidate(token);
+
+        assertTrue(sessionManager.lastSeen(42).isEmpty());
+        assertFalse(sessionManager.onlineUserIds(Duration.ofMinutes(1)).contains(42));
+    }
+
+    @Test
+    void invalidate_keepsLastSeenWhenAnotherValidSessionForTheSameUserRemains() throws Exception {
+        SessionManager sessionManager = new SessionManager();
+        String tokenA = sessionManager.createSession(42);
+        String tokenB = sessionManager.createSession(42);
+
+        sessionManager.invalidate(tokenA);
+
+        assertTrue(sessionManager.lastSeen(42).isPresent(), "user 42 is still logged in via tokenB");
+        assertEquals(42, sessionManager.resolve(tokenB));
+    }
+
+    @Test
     void invalidate_unknownToken_isANoOp() {
         SessionManager sessionManager = new SessionManager();
 
@@ -121,6 +147,40 @@ class SessionManagerTest {
         SessionManager sessionManager = new SessionManager();
 
         assertThrows(AuthenticationException.class, () -> sessionManager.resolve(null));
+    }
+
+    @Test
+    void onlineUserIds_dedupesMultipleTokensForTheSameUser() {
+        SessionManager sessionManager = new SessionManager();
+        sessionManager.createSession(1);
+        sessionManager.createSession(1);
+        sessionManager.createSession(2);
+
+        assertEquals(Set.of(1, 2), sessionManager.onlineUserIds(Duration.ofMinutes(1)));
+    }
+
+    @Test
+    void onlineUserIds_excludesUsersQuietLongerThanTheLivenessWindow() throws Exception {
+        SessionManager sessionManager = new SessionManager();
+        sessionManager.createSession(1);
+
+        Thread.sleep(30);
+
+        assertTrue(sessionManager.onlineUserIds(Duration.ofMillis(10)).isEmpty(),
+                "a user silent past the liveness window shouldn't count as online even with a valid token");
+        assertEquals(Set.of(1), sessionManager.onlineUserIds(Duration.ofMinutes(1)),
+                "a wider liveness window should still see the same user");
+    }
+
+    @Test
+    void onlineUserIds_excludesUsersWithAnExpiredToken() throws Exception {
+        SessionManager sessionManager = new SessionManager(Duration.ofMillis(20));
+        sessionManager.createSession(1);
+
+        Thread.sleep(40);
+
+        assertTrue(sessionManager.onlineUserIds(Duration.ofMinutes(1)).isEmpty(),
+                "an expired token shouldn't count as online even within the liveness window");
     }
 
     @Test

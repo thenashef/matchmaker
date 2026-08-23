@@ -1,5 +1,6 @@
 package com.matchmaker.client.communication;
 
+import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
@@ -9,6 +10,7 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
 import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.IllegalMoveException;
+import com.matchmaker.common.exceptions.NotParticipantException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
 
@@ -36,12 +38,25 @@ public class InMemoryServerConnection implements ServerConnection {
     private IllegalMoveException makeMoveFailure;
     private List<String> legalContinuationsResult = new ArrayList<>();
     private NotYourTurnException legalContinuationsFailure;
+    private NotParticipantException resignFailure;
+    private boolean resignCalled = false;
+    private int lastResignSessionId = -1;
+    private GameStateDTO resignResult;
+    private final List<String> sentChatMessages = new ArrayList<>();
+    private List<ChatMessageDTO> chatHistoryResult = new ArrayList<>();
+    private GameStateDTO rematchResult;
+    private NotParticipantException rematchNotParticipantFailure;
+    private AlreadyInGameException rematchAlreadyInGameFailure;
+    private int lastRematchFinishedSessionId = -1;
+    private UserDTO profileResult;
+    private UserDTO opponentProfileResult;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
     private volatile String lastKeepAliveToken;
 
     private final List<MakeMoveCall> makeMoveCalls = new ArrayList<>();
     private final Map<Integer, List<ServerEventListener>> playerQueueListeners = new HashMap<>();
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
+    private final Map<Integer, Integer> sessionTopicSubscribeCalls = new HashMap<>();
 
     public void setLoginResult(LoginResultDTO result) { this.loginResult = result; }
     public void setLoginFailure(AuthenticationException failure) { this.loginFailure = failure; }
@@ -55,6 +70,18 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setMakeMoveFailure(IllegalMoveException failure) { this.makeMoveFailure = failure; }
     public void setLegalContinuationsResult(List<String> result) { this.legalContinuationsResult = result; }
     public void setLegalContinuationsFailure(NotYourTurnException failure) { this.legalContinuationsFailure = failure; }
+    public void setResignFailure(NotParticipantException failure) { this.resignFailure = failure; }
+    public void setResignResult(GameStateDTO result) { this.resignResult = result; }
+    public boolean wasResignCalled() { return resignCalled; }
+    public int lastResignSessionId() { return lastResignSessionId; }
+    public List<String> sentChatMessages() { return sentChatMessages; }
+    public void setChatHistoryResult(List<ChatMessageDTO> result) { this.chatHistoryResult = result; }
+    public void setRematchResult(GameStateDTO result) { this.rematchResult = result; }
+    public void setRematchNotParticipantFailure(NotParticipantException failure) { this.rematchNotParticipantFailure = failure; }
+    public void setRematchAlreadyInGameFailure(AlreadyInGameException failure) { this.rematchAlreadyInGameFailure = failure; }
+    public int lastRematchFinishedSessionId() { return lastRematchFinishedSessionId; }
+    public void setProfileResult(UserDTO result) { this.profileResult = result; }
+    public void setOpponentProfileResult(UserDTO result) { this.opponentProfileResult = result; }
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
     public List<MakeMoveCall> makeMoveCalls() { return makeMoveCalls; }
     public int keepAliveCallCount() { return keepAliveCallCount.get(); }
@@ -115,6 +142,43 @@ public class InMemoryServerConnection implements ServerConnection {
     }
 
     @Override
+    public GameStateDTO resign(String sessionToken, int gameSessionId) throws NotParticipantException {
+        resignCalled = true;
+        lastResignSessionId = gameSessionId;
+        if (resignFailure != null) throw resignFailure;
+        return resignResult;
+    }
+
+    @Override
+    public void sendChatMessage(String sessionToken, int gameSessionId, String content) {
+        sentChatMessages.add(content);
+    }
+
+    @Override
+    public List<ChatMessageDTO> getChatHistory(String sessionToken, int gameSessionId) {
+        return chatHistoryResult;
+    }
+
+    @Override
+    public GameStateDTO rematch(String sessionToken, int finishedSessionId)
+            throws NotParticipantException, AlreadyInGameException {
+        lastRematchFinishedSessionId = finishedSessionId;
+        if (rematchNotParticipantFailure != null) throw rematchNotParticipantFailure;
+        if (rematchAlreadyInGameFailure != null) throw rematchAlreadyInGameFailure;
+        return rematchResult;
+    }
+
+    @Override
+    public UserDTO getProfile(String sessionToken) {
+        return profileResult;
+    }
+
+    @Override
+    public UserDTO getOpponentProfile(String sessionToken, int gameSessionId) {
+        return opponentProfileResult;
+    }
+
+    @Override
     public Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener) {
         playerQueueListeners.computeIfAbsent(userId, id -> new ArrayList<>()).add(listener);
         return () -> playerQueueListeners.getOrDefault(userId, List.of()).remove(listener);
@@ -123,6 +187,7 @@ public class InMemoryServerConnection implements ServerConnection {
     @Override
     public Subscription subscribeToSessionTopic(int sessionId, ServerEventListener listener) {
         sessionTopicListeners.computeIfAbsent(sessionId, id -> new ArrayList<>()).add(listener);
+        sessionTopicSubscribeCalls.merge(sessionId, 1, Integer::sum);
         return () -> sessionTopicListeners.getOrDefault(sessionId, List.of()).remove(listener);
     }
 
@@ -132,6 +197,11 @@ public class InMemoryServerConnection implements ServerConnection {
 
     public boolean isSubscribedToSessionTopic(int sessionId) {
         return !sessionTopicListeners.getOrDefault(sessionId, List.of()).isEmpty();
+    }
+
+    /** Cumulative subscribeToSessionTopic() calls for this session, unaffected by later unsubscribes. */
+    public int sessionTopicSubscribeCallCount(int sessionId) {
+        return sessionTopicSubscribeCalls.getOrDefault(sessionId, 0);
     }
 
     public void firePlayerQueueEvent(int userId, GameEventDTO event) {

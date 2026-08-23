@@ -15,6 +15,9 @@ public final class TestDatabase {
             stmt.execute("DELETE FROM Move");
             stmt.execute("DELETE FROM ChatMessage");
             stmt.execute("DELETE FROM MatchmakingQueue");
+            // GameSession.RematchSessionID self-references GameSession -- null it out first so the
+            // DELETE below doesn't depend on InnoDB happening to process rows in an FK-safe order.
+            stmt.execute("UPDATE GameSession SET RematchSessionID = NULL");
             stmt.execute("DELETE FROM GameSession");
             stmt.execute("DELETE FROM User");
             stmt.execute("DELETE FROM GameType");

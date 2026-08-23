@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,6 +37,32 @@ class UserDaoTest {
         assertEquals(0, record.draws());
         assertEquals(1200, record.rating());
         assertNotNull(record.createdAt());
+    }
+
+    @Test
+    void insert_withIsAdminTrue_persistsTheAdminFlag() {
+        Optional<UserRecord> result = userDao.insert("newadmin", "hashed-password", true);
+
+        assertTrue(result.isPresent());
+        assertTrue(result.get().admin());
+        assertTrue(userDao.findById(result.get().id()).get().admin(), "the flag must actually be persisted, not just returned");
+    }
+
+    @Test
+    void insert_twoArgOverload_stillDefaultsToNonAdmin() {
+        Optional<UserRecord> result = userDao.insert("alice", "hashed-password");
+
+        assertFalse(result.get().admin());
+    }
+
+    @Test
+    void findAdminUserIds_returnsOnlyAdmins() {
+        int adminId = userDao.insert("admin1", "hash", true).get().id();
+        userDao.insert("player1", "hash", false);
+
+        Set<Integer> adminIds = userDao.findAdminUserIds();
+
+        assertEquals(Set.of(adminId), adminIds);
     }
 
     @Test

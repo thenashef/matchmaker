@@ -10,4 +10,6 @@ public interface MatchmakingQueue {
             throws AlreadyInGameException;
 
     void cancel(int userId);
+
+    int countWaiting();
 }

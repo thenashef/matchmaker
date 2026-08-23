@@ -3,6 +3,7 @@ package com.matchmaker.admin.presentation;
 import com.matchmaker.admin.logic.AdminClientService;
 import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
+import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameEventType;
 import com.matchmaker.common.enums.GameStatus;
 import javafx.application.Platform;
@@ -13,9 +14,21 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.stage.FileChooser;
+import javafx.stage.Window;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 public class LiveSessionMonitorController {
+
+    private static final Logger LOG = Logger.getLogger(LiveSessionMonitorController.class.getName());
 
     private static final int BOARD_SIZE = 8;
     private static final int CELL_SIZE = 50;
@@ -25,6 +38,7 @@ public class LiveSessionMonitorController {
     @FXML private Label detailLabel;
     @FXML private GridPane boardGrid;
     @FXML private Button forceEndButton;
+    @FXML private Button exportLogButton;
     @FXML private Button backButton;
 
     private AdminClientService adminClientService;
@@ -98,6 +112,47 @@ public class LiveSessionMonitorController {
                     forceEndButton.setDisable(false);
                     detailLabel.setText("Failed to force-end: " + error.getMessage());
                 });
+    }
+
+    @FXML
+    private void onExportLog() {
+        int sessionId = currentState.getSessionId();
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Export Move Log");
+        fileChooser.setInitialFileName("session-" + sessionId + "-moves.txt");
+        Window owner = exportLogButton.getScene().getWindow();
+        // showSaveDialog() runs a nested event loop, during which a pushed applyState() could
+        // reassign currentState -- capture the session id above rather than re-reading it after.
+        File file = fileChooser.showSaveDialog(owner);
+        if (file == null) {
+            return;
+        }
+
+        exportLogButton.setDisable(true);
+        adminClientService.listMoves(sessionId,
+                moves -> {
+                    exportLogButton.setDisable(false);
+                    writeMovesToFile(file, moves);
+                },
+                error -> {
+                    exportLogButton.setDisable(false);
+                    detailLabel.setText("Failed to export log: " + error.getMessage());
+                });
+    }
+
+    private void writeMovesToFile(File file, List<MoveDTO> moves) {
+        try (PrintWriter writer = new PrintWriter(file, StandardCharsets.UTF_8)) {
+            for (MoveDTO move : moves) {
+                writer.println("#" + move.getMoveNumber() + " user=" + move.getUserId() + " " + move.getPayload());
+            }
+            if (writer.checkError()) {
+                throw new IOException("PrintWriter reported a write error");
+            }
+            detailLabel.setText("Exported " + moves.size() + " moves to " + file.getName());
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to write move log to " + file, e);
+            detailLabel.setText("Failed to write log file: " + e.getMessage());
+        }
     }
 
     @FXML

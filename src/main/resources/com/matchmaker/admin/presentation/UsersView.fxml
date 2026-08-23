@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.matchmaker.admin.presentation.UsersController"
+      spacing="10">
+    <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+    <Label text="Users" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <TableView fx:id="usersTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="idColumn" text="ID" prefWidth="50"/>
+            <TableColumn fx:id="usernameColumn" text="Username" prefWidth="140"/>
+            <TableColumn fx:id="adminColumn" text="Admin" prefWidth="60"/>
+            <TableColumn fx:id="ratingColumn" text="Rating" prefWidth="70"/>
+            <TableColumn fx:id="recordColumn" text="W/L/D" prefWidth="90"/>
+        </columns>
+    </TableView>
+    <Label text="Create User" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+    <HBox spacing="10" alignment="CENTER_LEFT">
+        <TextField fx:id="newUsernameField" promptText="Username" prefWidth="140"/>
+        <PasswordField fx:id="newPasswordField" promptText="Password" prefWidth="140"/>
+        <CheckBox fx:id="newIsAdminCheckBox" text="Admin"/>
+        <Button fx:id="createButton" text="Create" onAction="#onCreate"/>
+        <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
+        <Button fx:id="backButton" text="Back to Dashboard" onAction="#onBackToDashboard"/>
+    </HBox>
+    <Label fx:id="statusLabel" wrapText="true"/>
+</VBox>
