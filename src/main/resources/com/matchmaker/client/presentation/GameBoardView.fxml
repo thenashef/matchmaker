@@ -42,7 +42,7 @@
     <bottom>
         <VBox spacing="8" alignment="CENTER">
             <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
-            <Button fx:id="resignButton" text="Resign" onAction="#onResign"/>
+            <Button fx:id="resignButton" text="Forfeit" onAction="#onResign"/>
         </VBox>
     </bottom>
 </BorderPane>

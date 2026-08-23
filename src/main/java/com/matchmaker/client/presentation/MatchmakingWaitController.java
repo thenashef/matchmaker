@@ -15,17 +15,21 @@ public class MatchmakingWaitController {
     private SceneNavigator navigator;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator) {
+        init(gameClientService, navigator, null);
+    }
+
+    public void init(GameClientService gameClientService, SceneNavigator navigator, String gameName) {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
-        statusLabel.setText("Waiting for an opponent...");
+        statusLabel.setText(gameName == null || gameName.isBlank()
+                ? "Waiting for an opponent..."
+                : "Waiting for a " + gameName + " opponent...");
         // A former opponent can rematch us while we're waiting on this screen too.
         gameClientService.attachRematchListener(this::enterRematchedGame);
     }
 
     private void enterRematchedGame(GameStateDTO newSession) {
-        GameBoardController controller = navigator.show("GameBoardView.fxml",
-                "MatchMaker - Game (" + gameClientService.getCurrentUser().getUsername() + ")");
-        controller.init(gameClientService, navigator, newSession);
+        GameSceneRouter.showGame(navigator, gameClientService, newSession);
     }
 
     @FXML

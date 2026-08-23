@@ -86,9 +86,7 @@ public class GameOverController {
         }
         navigatedAway = true;
         gameClientService.attachRematchListener(null);
-        GameBoardController controller = navigator.show("GameBoardView.fxml",
-                "MatchMaker - Game (" + gameClientService.getCurrentUser().getUsername() + ")");
-        controller.init(gameClientService, navigator, newSession);
+        GameSceneRouter.showGame(navigator, gameClientService, newSession);
     }
 
     @FXML

@@ -21,6 +21,7 @@ import com.matchmaker.server.dao.GameTypeDao;
 import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.dao.UserRecord;
 import com.matchmaker.server.game.GameEngine;
+import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.game.GameResult;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
@@ -46,13 +47,13 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     private final GameTypeDao gameTypeDao;
     private final MatchmakingQueue matchmakingQueue;
     private final GameEventPublisher gameEventPublisher;
-    private final GameEngine gameEngine;
+    private final GameEngineRegistry gameEngines;
     private final ChatMessageDao chatMessageDao;
     private final UserDao userDao;
 
     public PlayerServiceImpl(SessionManager sessionManager, GameSessionDao gameSessionDao, GameTypeDao gameTypeDao,
                               MatchmakingQueue matchmakingQueue, GameEventPublisher gameEventPublisher,
-                              GameEngine gameEngine, ChatMessageDao chatMessageDao, UserDao userDao)
+                              GameEngineRegistry gameEngines, ChatMessageDao chatMessageDao, UserDao userDao)
             throws RemoteException {
         super();
         this.sessionManager = sessionManager;
@@ -60,7 +61,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         this.gameTypeDao = gameTypeDao;
         this.matchmakingQueue = matchmakingQueue;
         this.gameEventPublisher = gameEventPublisher;
-        this.gameEngine = gameEngine;
+        this.gameEngines = gameEngines;
         this.chatMessageDao = chatMessageDao;
         this.userDao = userDao;
     }
@@ -75,7 +76,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     public GameStateDTO joinQueue(String sessionToken, int gameTypeId)
             throws RemoteException, AuthenticationException, AlreadyInGameException {
         int userId = sessionManager.resolve(sessionToken);
-        GameStateDTO result = matchmakingQueue.join(userId, gameTypeId, gameEngine.initialState());
+        GameStateDTO result = matchmakingQueue.join(userId, gameTypeId, engineFor(gameTypeId).initialState());
 
         if (result != null) {
             Integer opponentUserId;
@@ -125,18 +126,21 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
         String currentBoardState = session.getBoardState();
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
+        GameEngine gameEngine = engineFor(session.getGameTypeId());
         if (!gameEngine.isLegalMove(currentBoardState, isPlayer1Turn, movePayload)) {
             throw new IllegalMoveException("Illegal move for session " + gameSessionId + ": " + movePayload);
         }
 
         String newBoardState = gameEngine.applyMove(currentBoardState, isPlayer1Turn, movePayload);
-        GameResult result = gameEngine.checkWinner(newBoardState, !isPlayer1Turn);
+        boolean retainTurn = gameEngine.retainsTurn(newBoardState);
+        boolean nextIsPlayer1 = retainTurn ? isPlayer1Turn : !isPlayer1Turn;
+        GameResult result = gameEngine.checkWinner(newBoardState, nextIsPlayer1);
 
-        int opponentId = isPlayer1Turn ? session.getPlayer2Id() : session.getPlayer1Id();
+        int nextTurnUserId = nextIsPlayer1 ? session.getPlayer1Id() : session.getPlayer2Id();
         GameStateDTO updatedSession;
         if (result == GameResult.CONTINUE) {
             updatedSession = new GameStateDTO(session.getSessionId(), session.getGameTypeId(),
-                    session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.ACTIVE, opponentId, null, newBoardState);
+                    session.getPlayer1Id(), session.getPlayer2Id(), GameStatus.ACTIVE, nextTurnUserId, null, newBoardState);
         } else {
             Integer winnerId = result == GameResult.PLAYER1_WINS ? session.getPlayer1Id()
                     : result == GameResult.PLAYER2_WINS ? session.getPlayer2Id() : null;
@@ -178,7 +182,8 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         }
 
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
-        return gameEngine.legalContinuations(session.getBoardState(), isPlayer1Turn, partialMovePayload);
+        return engineFor(session.getGameTypeId())
+                .legalContinuations(session.getBoardState(), isPlayer1Turn, partialMovePayload);
     }
 
     @Override
@@ -273,7 +278,8 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                     "Opponent isn't currently online -- matchmake a new game instead of a rematch");
         }
 
-        GameStateDTO newSession = gameSessionDao.createRematch(finishedSessionId, gameEngine.initialState());
+        GameStateDTO newSession = gameSessionDao.createRematch(finishedSessionId,
+                engineFor(finished.getGameTypeId()).initialState());
 
         int otherUserId = newSession.getPlayer1Id() == userId ? newSession.getPlayer2Id() : newSession.getPlayer1Id();
         try {
@@ -325,6 +331,12 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         UserRecord record = userDao.findById(opponentId)
                 .orElseThrow(() -> new NotParticipantException("Opponent " + opponentId + " no longer exists"));
         return toUserDTO(record);
+    }
+
+    private GameEngine engineFor(int gameTypeId) {
+        GameTypeDTO type = gameTypeDao.findById(gameTypeId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown game type " + gameTypeId));
+        return gameEngines.forName(type.getName());
     }
 
     private static UserDTO toUserDTO(UserRecord record) {

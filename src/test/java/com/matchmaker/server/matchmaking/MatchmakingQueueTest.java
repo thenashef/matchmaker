@@ -149,10 +149,12 @@ class MatchmakingQueueTest {
         assertNull(first);
         assertNull(second);
         assertEquals(1, countQueueRows());
+        assertTrue(hasQueueRowFor(aliceId, chessGameTypeId));
+        assertFalse(hasQueueRowFor(aliceId, gameTypeId));
     }
 
     @Test
-    void join_alreadyQueuedForDifferentGameType_returnsNullAndDoesNotDisturbEitherQueue() throws Exception {
+    void join_alreadyQueuedForDifferentGameType_leavesOldQueueAndPairsOnTheNewType() throws Exception {
         int chessGameTypeId = insertGameType("Chess");
         int bobId = insertUser("bob");
         int aliceId = insertUser("alice");
@@ -163,13 +165,10 @@ class MatchmakingQueueTest {
 
         assertNull(bobJoin);
         assertNull(aliceJoinCheckers);
-        assertNull(aliceJoinChess, "Alice already has a WAITING row, so joining a second game type must no-op");
-        assertEquals(2, countQueueRows(), "Bob's chess row and Alice's checkers row must both remain untouched");
-        assertEquals("WAITING", queueStatusFor(bobId, chessGameTypeId),
-                "Bob's chess row must still be WAITING, not matched into a session");
-        assertEquals("WAITING", queueStatusFor(aliceId, gameTypeId),
-                "Alice's checkers row must still be WAITING, not matched into a session");
-        assertEquals(0, countGameSessions(), "no GameSession should have been created");
+        assertNotNull(aliceJoinChess, "switching queues must pair Alice with Bob who is already waiting for chess");
+        assertEquals(0, countQueueRows());
+        assertEquals(1, countGameSessions());
+        assertEquals(chessGameTypeId, aliceJoinChess.getGameTypeId());
     }
 
     @Test

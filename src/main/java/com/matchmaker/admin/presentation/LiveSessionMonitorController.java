@@ -16,6 +16,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -71,9 +72,32 @@ public class LiveSessionMonitorController {
         forceEndButton.setDisable(state.getStatus() != GameStatus.ACTIVE);
     }
 
+    private void renderEightsSummary(JSONObject board) {
+        JSONArray hand1 = board.optJSONArray("hand1");
+        JSONArray hand2 = board.optJSONArray("hand2");
+        int size1 = hand1 == null ? 0 : hand1.length();
+        int size2 = hand2 == null ? 0 : hand2.length();
+        JSONArray discard = board.optJSONArray("discard");
+        String top = (discard == null || discard.isEmpty()) ? "-" : discard.getString(discard.length() - 1);
+        String namedSuit = "-";
+        if (board.has("namedSuit") && !board.isNull("namedSuit")) {
+            String suit = board.getString("namedSuit");
+            if (!suit.isBlank()) {
+                namedSuit = suit;
+            }
+        }
+        detailLabel.setText(detailLabel.getText()
+                + " -- Eights  P1 " + size1 + " cards vs P2 " + size2 + " cards -- discard " + top
+                + " -- named suit " + namedSuit);
+    }
+
     private void renderBoard(GameStateDTO state) {
         boardGrid.getChildren().clear();
         JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
+        if ("eights".equalsIgnoreCase(board.optString("game"))) {
+            renderEightsSummary(board);
+            return;
+        }
         JSONObject pieces = board.getJSONObject("pieces");
 
         for (int row = 0; row < BOARD_SIZE; row++) {

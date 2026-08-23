@@ -76,6 +76,9 @@ CREATE TABLE ChatMessage (
 INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols)
 VALUES ('Checkers', 'Classic two-player checkers on an 8x8 board.', 2, 2, 8, 8);
 
+INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols)
+VALUES ('Crazy Eights', 'Play a card matching rank or suit. Eights are wild and name the next suit. First to empty their hand wins.', 2, 2, 1, 1);
+
 CREATE DATABASE IF NOT EXISTS matchmaker_test;
 GRANT ALL PRIVILEGES ON matchmaker_test.* TO 'matchmaker'@'%';
 FLUSH PRIVILEGES;
@@ -155,3 +158,9 @@ CREATE TABLE ChatMessage (
     FOREIGN KEY (SessionID) REFERENCES GameSession(ID),
     FOREIGN KEY (UserID) REFERENCES User(ID)
 );
+
+INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols)
+VALUES ('Checkers', 'Classic two-player checkers on an 8x8 board.', 2, 2, 8, 8);
+
+INSERT INTO GameType (Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols)
+VALUES ('Crazy Eights', 'Play a card matching rank or suit. Eights are wild and name the next suit. First to empty their hand wins.', 2, 2, 1, 1);

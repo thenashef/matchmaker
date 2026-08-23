@@ -12,7 +12,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
-import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
@@ -23,6 +22,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +40,6 @@ public class LobbyController {
     @FXML private Label welcomeLabel;
     @FXML private Label ratingLabel;
     @FXML private FlowPane gameTypeTiles;
-    @FXML private Button joinButton;
     @FXML private Label statusLabel;
     @FXML private TableView<LeaderboardRow> leaderboardTable;
     @FXML private TableColumn<LeaderboardRow, Number> rankColumn;
@@ -50,7 +49,7 @@ public class LobbyController {
 
     private GameClientService gameClientService;
     private SceneNavigator navigator;
-    private GameTypeDTO selectedGameType;
+    private boolean joining;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator) {
         this.gameClientService = gameClientService;
@@ -110,12 +109,9 @@ public class LobbyController {
 
     private void showGameTypes(List<GameTypeDTO> gameTypes) {
         gameTypeTiles.getChildren().clear();
-        selectedGameType = null;
+        joining = false;
         for (GameTypeDTO gameType : gameTypes) {
             gameTypeTiles.getChildren().add(buildGameTile(gameType));
-        }
-        if (!gameTypeTiles.getChildren().isEmpty()) {
-            selectGameType(gameTypes.get(0), (VBox) gameTypeTiles.getChildren().get(0));
         }
     }
 
@@ -149,15 +145,21 @@ public class LobbyController {
 
         Label name = new Label(gameType.getName());
         name.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
-        Label size = new Label(gameType.getBoardRows() + "x" + gameType.getBoardCols());
+        String subtitle = "Crazy Eights".equalsIgnoreCase(gameType.getName())
+                ? "52 cards"
+                : gameType.getBoardRows() + "x" + gameType.getBoardCols();
+        Label size = new Label(subtitle);
         size.setStyle("-fx-font-size: 11px; -fx-text-fill: #666666;");
         tile.getChildren().addAll(name, size);
 
-        tile.setOnMouseClicked(event -> selectGameType(gameType, tile));
+        tile.setOnMouseClicked(event -> joinGame(gameType, tile));
         return tile;
     }
 
     private Node buildGameIcon(GameTypeDTO gameType) {
+        if ("Crazy Eights".equalsIgnoreCase(gameType.getName())) {
+            return buildCardGameIcon();
+        }
         int rows = Math.max(gameType.getBoardRows(), 1);
         int cols = Math.max(gameType.getBoardCols(), 1);
         int cell = Math.max(6, ICON_SIZE / Math.max(rows, cols));
@@ -190,34 +192,53 @@ public class LobbyController {
         return board;
     }
 
-    private void selectGameType(GameTypeDTO gameType, VBox selectedTile) {
-        selectedGameType = gameType;
-        for (Node node : gameTypeTiles.getChildren()) {
-            node.setStyle(node == selectedTile ? TILE_SELECTED : TILE_IDLE);
-        }
+    private static Node buildCardGameIcon() {
+        StackPane icon = new StackPane();
+        icon.setMinSize(ICON_SIZE, ICON_SIZE);
+        icon.setPrefSize(ICON_SIZE, ICON_SIZE);
+        icon.setMaxSize(ICON_SIZE, ICON_SIZE);
+        Rectangle back = new Rectangle(36, 50);
+        back.setArcWidth(8);
+        back.setArcHeight(8);
+        back.setFill(Color.web("#1b4f72"));
+        back.setStroke(Color.web("#154360"));
+        back.setRotate(-14);
+        back.setTranslateX(-8);
+        Rectangle front = new Rectangle(36, 50);
+        front.setArcWidth(8);
+        front.setArcHeight(8);
+        front.setFill(Color.web("#f7f1e8"));
+        front.setStroke(Color.web("#922b21"));
+        front.setRotate(10);
+        front.setTranslateX(8);
+        icon.getChildren().addAll(back, front);
+        return icon;
     }
 
-    @FXML
-    private void onJoinQueue() {
-        if (selectedGameType == null) {
-            statusLabel.setText("Pick a game first.");
+    private void joinGame(GameTypeDTO gameType, VBox selectedTile) {
+        if (joining) {
             return;
         }
-        joinButton.setDisable(true);
+        joining = true;
+        statusLabel.setText("");
+        for (Node node : gameTypeTiles.getChildren()) {
+            node.setStyle(node == selectedTile ? TILE_SELECTED : TILE_IDLE);
+            node.setDisable(true);
+        }
         String username = gameClientService.getCurrentUser().getUsername();
-        gameClientService.joinQueue(selectedGameType.getId(),
-                matchedState -> {
-                    GameBoardController controller = navigator.show("GameBoardView.fxml",
-                            "MatchMaker - Game (" + username + ")");
-                    controller.init(gameClientService, navigator, matchedState);
-                },
+        gameClientService.joinQueue(gameType.getId(),
+                matchedState -> GameSceneRouter.showGame(navigator, gameClientService, matchedState),
                 () -> {
                     MatchmakingWaitController controller = navigator.show("MatchmakingWaitView.fxml",
                             "MatchMaker - Waiting (" + username + ")");
-                    controller.init(gameClientService, navigator);
+                    controller.init(gameClientService, navigator, gameType.getName());
                 },
                 error -> {
-                    joinButton.setDisable(false);
+                    joining = false;
+                    for (Node node : gameTypeTiles.getChildren()) {
+                        node.setDisable(false);
+                        node.setStyle(TILE_IDLE);
+                    }
                     statusLabel.setText(error instanceof AlreadyInGameException
                             ? "You're already in a game."
                             : error.getMessage());
@@ -225,9 +246,7 @@ public class LobbyController {
     }
 
     private void enterRematchedGame(GameStateDTO newSession) {
-        GameBoardController controller = navigator.show("GameBoardView.fxml",
-                "MatchMaker - Game (" + gameClientService.getCurrentUser().getUsername() + ")");
-        controller.init(gameClientService, navigator, newSession);
+        GameSceneRouter.showGame(navigator, gameClientService, newSession);
     }
 
     private static String formatRecord(UserDTO user) {

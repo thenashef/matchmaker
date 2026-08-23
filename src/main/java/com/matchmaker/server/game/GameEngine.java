@@ -13,4 +13,9 @@ public interface GameEngine {
     String applyMove(String stateJson, boolean isPlayer1Turn, String movePayloadJson);
 
     GameResult checkWinner(String stateJson, boolean isPlayer1ToMoveNext);
+
+    /** True when the player who just moved still has to act (e.g. play a just-drawn legal card). */
+    default boolean retainsTurn(String stateJson) {
+        return false;
+    }
 }

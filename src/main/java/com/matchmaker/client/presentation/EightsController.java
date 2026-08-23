@@ -10,40 +10,37 @@ import com.matchmaker.common.exceptions.NotYourTurnException;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
-import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.media.AudioClip;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
 import javafx.util.Duration;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class GameBoardController {
+public class EightsController {
 
-    private static final Logger LOG = Logger.getLogger(GameBoardController.class.getName());
-
-    private static final int BOARD_SIZE = 8;
+    private static final Logger LOG = Logger.getLogger(EightsController.class.getName());
     private static final int TURN_TIMEOUT_SECONDS = 60;
-    private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
     private static final AudioClip TURN_SOUND = loadTurnSound();
 
     private static AudioClip loadTurnSound() {
         try {
-            var resource = GameBoardController.class.getResource("turn.wav");
+            var resource = EightsController.class.getResource("turn.wav");
             return resource == null ? null : new AudioClip(resource.toExternalForm());
         } catch (Exception e) {
             LOG.log(Level.WARNING, "Failed to load turn-notification sound", e);
@@ -51,11 +48,17 @@ public class GameBoardController {
         }
     }
 
-    @FXML private Circle colorIndicator;
-    @FXML private Label colorLabel;
     @FXML private Label statusLabel;
     @FXML private Label turnTimerLabel;
-    @FXML private GridPane boardGrid;
+    @FXML private Label opponentCountLabel;
+    @FXML private HBox opponentHandBox;
+    @FXML private StackPane discardSlot;
+    @FXML private Label namedSuitLabel;
+    @FXML private StackPane drawSlot;
+    @FXML private Label drawCountLabel;
+    @FXML private Button drawButton;
+    @FXML private HBox suitChooserBox;
+    @FXML private HBox yourHandBox;
     @FXML private Button resignButton;
     @FXML private ListView<String> chatListView;
     @FXML private TextField chatInputField;
@@ -64,21 +67,19 @@ public class GameBoardController {
     private GameClientService gameClientService;
     private SceneNavigator navigator;
     private GameStateDTO currentState;
-    private final List<String> selectedPath = new ArrayList<>();
-    private Set<String> highlightedSquares = Set.of();
-    private boolean highlightsLoading = false;
-    private int highlightRequestId;
     private Timeline turnCountdown;
     private boolean navigatedAway = false;
     private int ratingBeforeGame;
+    private final Set<String> playableCards = new HashSet<>();
+    private boolean drawLegal;
+    private int highlightRequestId;
+    private String pendingEightCode;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator, GameStateDTO initialState) {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
         resignButton.managedProperty().bind(resignButton.visibleProperty());
 
-        // Immediate fallback from the cached user, overwritten with a fresh value below -- the
-        // cached rating can be stale from login or an earlier game this session (see GameOverController).
         ratingBeforeGame = gameClientService.getCurrentUser().getRating();
         gameClientService.getProfile(
                 freshUser -> ratingBeforeGame = freshUser.getRating(),
@@ -87,15 +88,9 @@ public class GameBoardController {
         GameStateDTO latest = gameClientService.attachGameUpdateListener(this::applyState);
         applyState(latest != null ? latest : initialState);
         if (navigatedAway) {
-            // applyState already found the game over and navigated to GameOverController (which
-            // also already called leaveGame()) -- don't touch a torn-down gameClientService below.
             return;
         }
 
-        // Load history and only then start listening live. This narrows (but doesn't fully close)
-        // the race with a message the opponent sends during the async history round trip: attaching
-        // the listener first risked a duplicate render; this ordering instead risks rarely missing
-        // a message sent in the small gap between the history read and the listener attaching.
         gameClientService.getChatHistory(currentState.getSessionId(),
                 history -> {
                     history.forEach(this::appendChatMessage);
@@ -130,23 +125,21 @@ public class GameBoardController {
 
     private void applyState(GameStateDTO state) {
         this.currentState = state;
-        selectedPath.clear();
-        highlightRequestId++;
-        highlightsLoading = false;
-        updateColorIndicator();
-        renderBoard(state);
+        pendingEightCode = null;
+        hideSuitChooser();
+        renderTable(state);
         updateStatusLabel(state);
 
         boolean ended = state.getStatus() != GameStatus.ACTIVE;
         resignButton.setVisible(!ended);
-        // The server only accepts chat while the session is ACTIVE (see PlayerServiceImpl); disable
-        // proactively rather than let the user type a "gg" that silently fails to send.
         chatInputField.setDisable(ended);
         chatSendButton.setDisable(ended);
 
         if (ended) {
+            playableCards.clear();
+            drawLegal = false;
+            drawButton.setDisable(true);
             stopTurnCountdown();
-            highlightedSquares = Set.of();
             goToGameOverIfNotAlready(state);
         } else if (isMyTurn()) {
             if (TURN_SOUND != null) {
@@ -155,8 +148,11 @@ public class GameBoardController {
             startTurnCountdown();
             refreshHighlights();
         } else {
+            playableCards.clear();
+            drawLegal = false;
+            drawButton.setDisable(true);
             stopTurnCountdown();
-            highlightedSquares = Set.of();
+            renderTable(state);
         }
     }
 
@@ -172,48 +168,212 @@ public class GameBoardController {
 
     private void refreshHighlights() {
         int requestId = ++highlightRequestId;
-        highlightsLoading = true;
-        JSONObject payload = new JSONObject();
-        payload.put("path", new JSONArray(selectedPath));
-        gameClientService.legalContinuations(currentState.getSessionId(), payload.toString(),
+        gameClientService.legalContinuations(currentState.getSessionId(), "{}",
                 continuations -> {
                     if (requestId != highlightRequestId) {
                         return;
                     }
-                    if (continuations.isEmpty() && selectedPath.size() >= 2) {
-                        submitCurrentSelection();
-                        return;
-                    }
-                    highlightsLoading = false;
-                    Set<String> next = new HashSet<>();
+                    playableCards.clear();
+                    drawLegal = false;
                     for (String continuationJson : continuations) {
-                        JSONArray path = new JSONObject(continuationJson).getJSONArray("path");
-                        if (path.length() > 0) {
-                            next.add(path.getString(path.length() - 1));
+                        JSONObject move = new JSONObject(continuationJson);
+                        String action = move.optString("action");
+                        if ("draw".equals(action)) {
+                            drawLegal = true;
+                        } else if ("play".equals(action)) {
+                            playableCards.add(move.getString("card"));
                         }
                     }
-                    highlightedSquares = next;
-                    renderBoard(currentState);
+                    drawButton.setDisable(!drawLegal);
+                    renderTable(currentState);
                 },
                 error -> {
                     if (requestId != highlightRequestId) {
                         return;
                     }
-                    highlightsLoading = false;
                     LOG.log(Level.WARNING, "Failed to refresh legal-move highlights", error);
+                    drawButton.setDisable(true);
                 });
     }
 
-    private void submitCurrentSelection() {
-        JSONObject payload = new JSONObject();
-        payload.put("path", new JSONArray(selectedPath));
-        gameClientService.makeMove(currentState.getSessionId(), payload.toString(),
+    private void renderTable(GameStateDTO state) {
+        JSONObject board = new JSONObject(state.getBoardState());
+        boolean player1 = isPlayer1();
+        JSONArray myHand = board.getJSONArray(player1 ? "hand1" : "hand2");
+        JSONArray opponentHand = board.getJSONArray(player1 ? "hand2" : "hand1");
+        JSONArray draw = board.optJSONArray("draw");
+        JSONArray discard = board.optJSONArray("discard");
+        int drawCount = draw == null ? 0 : draw.length();
+        String topDiscard = (discard == null || discard.isEmpty()) ? null : discard.getString(discard.length() - 1);
+
+        opponentCountLabel.setText("Opponent — " + opponentHand.length() + " card"
+                + (opponentHand.length() == 1 ? "" : "s"));
+        renderOpponentBacks(opponentHand.length());
+        showFaceCard(discardSlot, topDiscard, false, 100, 140);
+        namedSuitLabel.setText(namedSuitCaption(board));
+        showCardBack(drawSlot, drawCount == 0, 100, 140);
+        drawCountLabel.setText(drawCount + " remaining");
+
+        yourHandBox.getChildren().clear();
+        for (int i = 0; i < myHand.length(); i++) {
+            String code = myHand.getString(i);
+            boolean playable = isMyTurn() && playableCards.contains(code);
+            StackPane card = showFaceCard(new StackPane(), code, !playable, 72, 104);
+            if (playable) {
+                card.setCursor(javafx.scene.Cursor.HAND);
+                card.setOnMouseClicked(event -> onCardClicked(code));
+            }
+            yourHandBox.getChildren().add(card);
+        }
+    }
+
+    private static String namedSuitCaption(JSONObject board) {
+        if (board.has("namedSuit") && !board.isNull("namedSuit")) {
+            String suit = board.getString("namedSuit");
+            if (!suit.isBlank()) {
+                return "Named suit: " + suitSymbol(suit);
+            }
+        }
+        return "";
+    }
+
+    private void renderOpponentBacks(int count) {
+        opponentHandBox.getChildren().clear();
+        int shown = Math.min(count, 12);
+        for (int i = 0; i < shown; i++) {
+            StackPane back = new StackPane();
+            showCardBack(back, false, 48, 68);
+            opponentHandBox.getChildren().add(back);
+        }
+    }
+
+    private void onCardClicked(String code) {
+        if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn()) {
+            return;
+        }
+        if (!playableCards.contains(code)) {
+            return;
+        }
+        if (code.startsWith("8") && !code.startsWith("10")) {
+            pendingEightCode = code;
+            suitChooserBox.setVisible(true);
+            suitChooserBox.setManaged(true);
+            statusLabel.setText("Choose the next suit.");
+            return;
+        }
+        submitPlay(new JSONObject().put("action", "play").put("card", code).toString());
+    }
+
+    @FXML private void onSuitHearts() { submitNamedEight("H"); }
+    @FXML private void onSuitDiamonds() { submitNamedEight("D"); }
+    @FXML private void onSuitClubs() { submitNamedEight("C"); }
+    @FXML private void onSuitSpades() { submitNamedEight("S"); }
+
+    private void submitNamedEight(String suit) {
+        if (pendingEightCode == null) {
+            return;
+        }
+        String card = pendingEightCode;
+        pendingEightCode = null;
+        hideSuitChooser();
+        submitPlay(new JSONObject().put("action", "play").put("card", card).put("suit", suit).toString());
+    }
+
+    @FXML
+    private void onDraw() {
+        if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn() || !drawLegal) {
+            return;
+        }
+        hideSuitChooser();
+        pendingEightCode = null;
+        drawButton.setDisable(true);
+        submitPlay(new JSONObject().put("action", "draw").toString());
+    }
+
+    private void submitPlay(String payload) {
+        drawButton.setDisable(true);
+        gameClientService.makeMove(currentState.getSessionId(), payload,
                 this::applyState,
                 error -> {
-                    selectedPath.clear();
+                    if (currentState.getStatus() == GameStatus.ACTIVE) {
+                        drawButton.setDisable(!drawLegal || !isMyTurn());
+                    }
                     statusLabel.setText(friendlyMoveErrorMessage(error));
-                    refreshHighlights();
                 });
+    }
+
+    private void hideSuitChooser() {
+        suitChooserBox.setVisible(false);
+        suitChooserBox.setManaged(false);
+    }
+
+    private static StackPane showFaceCard(StackPane slot, String code, boolean muted, double width, double height) {
+        slot.getChildren().clear();
+        Rectangle back = new Rectangle(width, height);
+        back.setArcWidth(12);
+        back.setArcHeight(12);
+        if (code == null) {
+            back.setFill(Color.TRANSPARENT);
+            back.setStroke(Color.web("#c4b8a5"));
+            back.getStrokeDashArray().addAll(6.0, 6.0);
+            Label empty = new Label("—");
+            empty.setStyle("-fx-font-size: 22px; -fx-text-fill: #c4b8a5;");
+            slot.getChildren().addAll(back, empty);
+            return slot;
+        }
+        boolean highlighted = !muted;
+        back.setFill(Color.web(muted ? "#f4efe6" : "#fffdf8"));
+        back.setStroke(Color.web(highlighted ? "#d4a017" : "#3e2723"));
+        back.setStrokeWidth(highlighted ? 3 : 1);
+        String suit = code.substring(code.length() - 1);
+        String rank = code.substring(0, code.length() - 1);
+        boolean red = "H".equals(suit) || "D".equals(suit);
+        String color = red ? "#c0392b" : "#1c2833";
+        VBox face = new VBox(2);
+        face.setAlignment(Pos.CENTER);
+        Label rankLabel = new Label(rank);
+        rankLabel.setStyle("-fx-font-size: " + Math.max(16, width / 3.2) + "px; -fx-font-weight: bold; -fx-text-fill: "
+                + color + ";");
+        Label suitLabel = new Label(suitSymbol(suit));
+        suitLabel.setStyle("-fx-font-size: " + Math.max(14, width / 3.6) + "px; -fx-text-fill: " + color + ";");
+        face.getChildren().addAll(rankLabel, suitLabel);
+        slot.getChildren().addAll(back, face);
+        return slot;
+    }
+
+    private static void showCardBack(StackPane slot, boolean empty, double width, double height) {
+        slot.getChildren().clear();
+        Rectangle back = new Rectangle(width, height);
+        back.setArcWidth(12);
+        back.setArcHeight(12);
+        if (empty) {
+            back.setFill(Color.TRANSPARENT);
+            back.setStroke(Color.web("#c4b8a5"));
+            back.getStrokeDashArray().addAll(6.0, 6.0);
+            Label emptyLabel = new Label("—");
+            emptyLabel.setStyle("-fx-font-size: 22px; -fx-text-fill: #c4b8a5;");
+            slot.getChildren().addAll(back, emptyLabel);
+            return;
+        }
+        back.setFill(Color.web("#1b4f72"));
+        back.setStroke(Color.web("#154360"));
+        Rectangle inner = new Rectangle(width - 16, height - 16);
+        inner.setArcWidth(8);
+        inner.setArcHeight(8);
+        inner.setFill(Color.TRANSPARENT);
+        inner.setStroke(Color.web("#f7f1e8"));
+        inner.setStrokeWidth(2);
+        slot.getChildren().addAll(back, inner);
+    }
+
+    private static String suitSymbol(String suit) {
+        return switch (suit) {
+            case "H" -> "♥";
+            case "D" -> "♦";
+            case "C" -> "♣";
+            case "S" -> "♠";
+            default -> suit;
+        };
     }
 
     private void startTurnCountdown() {
@@ -258,89 +418,13 @@ public class GameBoardController {
                 statusLabel.setText("Game ended -- you lost.");
             }
         } else {
-            statusLabel.setText(isMyTurn() ? "Your turn" : "Waiting for opponent...");
+            statusLabel.setText(isMyTurn() ? "Your turn -- play a matching card or draw." : "Waiting for opponent...");
         }
-    }
-
-    private void updateColorIndicator() {
-        boolean player1 = isPlayer1();
-        colorIndicator.setFill(player1 ? Color.BLACK : Color.WHITE);
-        colorLabel.setText("You are playing " + (player1 ? "Black" : "White"));
-    }
-
-    private void renderBoard(GameStateDTO state) {
-        boardGrid.getChildren().clear();
-        JSONObject board = new JSONObject(state.getBoardState() == null ? EMPTY_BOARD_JSON : state.getBoardState());
-        JSONObject pieces = board.getJSONObject("pieces");
-
-        boolean flip = !isPlayer1();
-
-        for (int row = 0; row < BOARD_SIZE; row++) {
-            for (int col = 0; col < BOARD_SIZE; col++) {
-                boolean dark = (row + col) % 2 == 1;
-                String algebraic = toAlgebraic(row, col);
-                StackPane cell = buildCell(dark, algebraic, pieces);
-                int displayRow = flip ? row : (BOARD_SIZE - 1 - row);
-                int displayCol = flip ? (BOARD_SIZE - 1 - col) : col;
-                boardGrid.add(cell, displayCol, displayRow);
-            }
-        }
-    }
-
-    private StackPane buildCell(boolean dark, String algebraic, JSONObject pieces) {
-        StackPane cell = new StackPane();
-        cell.setPrefSize(60, 60);
-
-        String backgroundColor = dark ? "#5c4033" : "#e8d5b7";
-        String borderStyle;
-        if (selectedPath.contains(algebraic)) {
-            borderStyle = "-fx-border-color: gold; -fx-border-width: 3;";
-        } else if (highlightedSquares.contains(algebraic)) {
-            borderStyle = "-fx-border-color: #4caf50; -fx-border-width: 3;";
-        } else {
-            borderStyle = "";
-        }
-        cell.setStyle("-fx-background-color: " + backgroundColor + "; " + borderStyle);
-
-        if (dark && pieces.has(algebraic)) {
-            char piece = pieces.getString(algebraic).charAt(0);
-            Circle disc = new Circle(20);
-            disc.setFill(Character.toLowerCase(piece) == 'b' ? Color.BLACK : Color.WHITE);
-            boolean king = Character.isUpperCase(piece);
-            disc.setStroke(king ? Color.GOLD : Color.GRAY);
-            disc.setStrokeWidth(king ? 3 : 1);
-            cell.getChildren().add(disc);
-        }
-
-        if (dark) {
-            cell.setOnMouseClicked(event -> onSquareClicked(algebraic));
-        }
-        return cell;
-    }
-
-    private void onSquareClicked(String algebraic) {
-        if (currentState == null || currentState.getStatus() != GameStatus.ACTIVE || !isMyTurn()) {
-            return;
-        }
-        if (highlightsLoading) {
-            return;
-        }
-        if (!highlightedSquares.contains(algebraic)) {
-            if (!selectedPath.isEmpty()) {
-                selectedPath.clear();
-                renderBoard(currentState);
-                refreshHighlights();
-            }
-            return;
-        }
-        selectedPath.add(algebraic);
-        renderBoard(currentState);
-        refreshHighlights();
     }
 
     private static String friendlyMoveErrorMessage(Throwable error) {
         if (error instanceof IllegalMoveException) {
-            return "That move isn't legal -- try a different one.";
+            return "That play isn't legal right now.";
         }
         if (error instanceof NotYourTurnException) {
             return "It's not your turn.";
@@ -356,8 +440,6 @@ public class GameBoardController {
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
                 "Forfeit this game? Your opponent will be credited the win.", ButtonType.YES, ButtonType.NO);
         confirmation.showAndWait().ifPresent(response -> {
-            // The confirmation dialog runs a nested event loop, so a push update (e.g. the
-            // opponent winning, or resigning first) can land while it's open -- re-check before acting.
             if (response != ButtonType.YES || currentState.getStatus() != GameStatus.ACTIVE) {
                 return;
             }
@@ -380,11 +462,5 @@ public class GameBoardController {
 
     private boolean isPlayer1() {
         return currentState.getPlayer1Id() == gameClientService.getCurrentUser().getId();
-    }
-
-    private static String toAlgebraic(int row, int col) {
-        char file = (char) ('a' + col);
-        char rank = (char) ('1' + row);
-        return "" + file + rank;
     }
 }

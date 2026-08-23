@@ -14,6 +14,11 @@ public class InMemoryMatchmakingQueue implements MatchmakingQueue {
 
     @Override
     public synchronized GameStateDTO join(int userId, int gameTypeId, String initialBoardState) {
+        Integer alreadyWaitingFor = waitingUserIdByGameTypeId.get(gameTypeId);
+        if (alreadyWaitingFor != null && alreadyWaitingFor == userId) {
+            return null;
+        }
+        cancel(userId);
         Integer opponentUserId = waitingUserIdByGameTypeId.get(gameTypeId);
         if (opponentUserId == null) {
             waitingUserIdByGameTypeId.put(gameTypeId, userId);

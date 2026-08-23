@@ -18,7 +18,6 @@
     <Label text="Choose a game" style="-fx-font-size: 14px;"/>
     <FlowPane fx:id="gameTypeTiles" hgap="16" vgap="16" alignment="CENTER"
               prefHeight="240" maxHeight="240" maxWidth="Infinity"/>
-    <Button fx:id="joinButton" text="Join Queue" onAction="#onJoinQueue"/>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="800"/>
     <Label text="Leaderboard" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
     <TableView fx:id="leaderboardTable" VBox.vgrow="ALWAYS" maxWidth="Infinity">

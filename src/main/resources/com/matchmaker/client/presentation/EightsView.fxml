@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.matchmaker.client.presentation.EightsController">
+    <top>
+        <VBox spacing="6" alignment="CENTER">
+            <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
+            <Label fx:id="statusLabel" style="-fx-font-size: 16px;"/>
+            <Label fx:id="turnTimerLabel" style="-fx-font-size: 14px; -fx-text-fill: #b03a2e;"/>
+        </VBox>
+    </top>
+    <center>
+        <VBox spacing="16" alignment="CENTER">
+            <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
+            <VBox spacing="6" alignment="CENTER">
+                <Label fx:id="opponentCountLabel" style="-fx-font-size: 13px; -fx-text-fill: #666666;"/>
+                <HBox fx:id="opponentHandBox" spacing="-18" alignment="CENTER"/>
+            </VBox>
+            <HBox spacing="28" alignment="CENTER">
+                <VBox spacing="6" alignment="CENTER">
+                    <Label text="Discard" style="-fx-font-size: 12px; -fx-text-fill: #666666;"/>
+                    <StackPane fx:id="discardSlot" prefWidth="110" prefHeight="150"/>
+                    <Label fx:id="namedSuitLabel" style="-fx-font-size: 12px; -fx-text-fill: #666666;"/>
+                </VBox>
+                <VBox spacing="6" alignment="CENTER">
+                    <Label text="Draw pile" style="-fx-font-size: 12px; -fx-text-fill: #666666;"/>
+                    <StackPane fx:id="drawSlot" prefWidth="110" prefHeight="150"/>
+                    <Label fx:id="drawCountLabel" style="-fx-font-size: 12px; -fx-text-fill: #666666;"/>
+                    <Button fx:id="drawButton" text="Draw" onAction="#onDraw" prefWidth="120"/>
+                </VBox>
+            </HBox>
+            <HBox fx:id="suitChooserBox" spacing="8" alignment="CENTER" visible="false" managed="false">
+                <Label text="Name a suit:" style="-fx-font-size: 13px;"/>
+                <Button text="♥ Hearts" onAction="#onSuitHearts"/>
+                <Button text="♦ Diamonds" onAction="#onSuitDiamonds"/>
+                <Button text="♣ Clubs" onAction="#onSuitClubs"/>
+                <Button text="♠ Spades" onAction="#onSuitSpades"/>
+            </HBox>
+            <VBox spacing="6" alignment="CENTER">
+                <Label text="Your hand" style="-fx-font-size: 12px; -fx-text-fill: #666666;"/>
+                <ScrollPane fitToHeight="true" hbarPolicy="AS_NEEDED" vbarPolicy="NEVER"
+                            style="-fx-background-color: transparent; -fx-background: transparent;">
+                    <HBox fx:id="yourHandBox" spacing="8" alignment="CENTER">
+                        <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                    </HBox>
+                </ScrollPane>
+                <Button fx:id="resignButton" text="Forfeit" onAction="#onResign" prefWidth="120"/>
+            </VBox>
+        </VBox>
+    </center>
+    <right>
+        <VBox spacing="6" prefWidth="300.0">
+            <BorderPane.margin><Insets top="10" right="10" bottom="10" left="0"/></BorderPane.margin>
+            <Label text="Chat" style="-fx-font-size: 14px; -fx-font-weight: bold;"/>
+            <ListView fx:id="chatListView" VBox.vgrow="ALWAYS"/>
+            <HBox spacing="6">
+                <TextField fx:id="chatInputField" promptText="Type a message..." HBox.hgrow="ALWAYS" onAction="#onSendChat"/>
+                <Button fx:id="chatSendButton" text="Send" onAction="#onSendChat"/>
+            </HBox>
+        </VBox>
+    </right>
+</BorderPane>

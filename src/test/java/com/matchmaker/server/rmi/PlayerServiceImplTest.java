@@ -16,7 +16,10 @@ import com.matchmaker.server.dao.InMemoryChatMessageDao;
 import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
 import com.matchmaker.server.dao.InMemoryUserDao;
+import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.game.checkers.CheckersEngine;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import com.matchmaker.server.jms.FailingGameEventPublisher;
 import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
@@ -53,8 +56,10 @@ class PlayerServiceImplTest {
         userDao = new InMemoryUserDao();
         userDao.insert("player1", "hash"); // id 1
         userDao.insert("player2", "hash"); // id 2
+        gameTypeDao.add(new GameTypeDTO(1, "Checkers", "desc", 2, 2, 8, 8));
+        gameTypeDao.add(new GameTypeDTO(2, "Crazy Eights", "desc", 2, 2, 1, 1));
         playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
-                gameEventPublisher, new CheckersEngine(), chatMessageDao, userDao);
+                gameEventPublisher, GameEngineRegistry.standard(), chatMessageDao, userDao);
         sessionToken = sessionManager.createSession(1);
         otherSessionToken = sessionManager.createSession(2);
     }
@@ -68,12 +73,11 @@ class PlayerServiceImplTest {
 
     @Test
     void listGameTypes_returnsWhatDaoReturns() throws Exception {
-        gameTypeDao.add(new GameTypeDTO(1, "Checkers", "desc", 2, 2, 8, 8));
-
         List<GameTypeDTO> result = playerService.listGameTypes(sessionToken);
 
-        assertEquals(1, result.size());
+        assertEquals(2, result.size());
         assertEquals("Checkers", result.get(0).getName());
+        assertEquals("Crazy Eights", result.get(1).getName());
     }
 
     @Test
@@ -161,7 +165,7 @@ class PlayerServiceImplTest {
     void joinQueue_publisherThrows_stillReturnsCallersOwnMatchedResult() throws Exception {
         PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
                 sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
-                new FailingGameEventPublisher(), new CheckersEngine(), chatMessageDao, userDao);
+                new FailingGameEventPublisher(), GameEngineRegistry.standard(), chatMessageDao, userDao);
         try {
             String otherToken = sessionManager.createSession(2);
             playerServiceWithFailingPublisher.joinQueue(otherToken, 1); // user 2 waits first
@@ -253,7 +257,7 @@ class PlayerServiceImplTest {
         // user 2 never calls resolve() on this fresh SessionManager, so they have no lastSeen entry
         PlayerServiceImpl serviceWithFreshSessionManager = new PlayerServiceImpl(
                 freshSessionManager, gameSessionDao, gameTypeDao, matchmakingQueue, gameEventPublisher,
-                new CheckersEngine(), chatMessageDao, userDao);
+                GameEngineRegistry.standard(), chatMessageDao, userDao);
         try {
             gameSessionDao.addFinishedSession(new GameStateDTO(1, 1, 1, 2, GameStatus.FINISHED, null, 1, "board"));
 
@@ -460,7 +464,7 @@ class PlayerServiceImplTest {
     void resign_publisherThrows_stillEndsGameForCaller() throws Exception {
         PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
                 sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
-                new FailingGameEventPublisher(), new CheckersEngine(), chatMessageDao, userDao);
+                new FailingGameEventPublisher(), GameEngineRegistry.standard(), chatMessageDao, userDao);
         try {
             String initialBoard = new CheckersEngine().initialState();
             gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
@@ -499,7 +503,7 @@ class PlayerServiceImplTest {
             }
         };
         PlayerServiceImpl serviceWithRaceDao = new PlayerServiceImpl(
-                sessionManager, raceDao, gameTypeDao, matchmakingQueue, gameEventPublisher, new CheckersEngine(),
+                sessionManager, raceDao, gameTypeDao, matchmakingQueue, gameEventPublisher, GameEngineRegistry.standard(),
                 chatMessageDao, userDao);
         try {
             GameStateDTO result = serviceWithRaceDao.resign(sessionToken, 1);
@@ -589,7 +593,7 @@ class PlayerServiceImplTest {
     void makeMove_publisherThrows_stillReturnsCallersOwnUpdatedState() throws Exception {
         PlayerServiceImpl playerServiceWithFailingPublisher = new PlayerServiceImpl(
                 sessionManager, gameSessionDao, gameTypeDao, matchmakingQueue,
-                new FailingGameEventPublisher(), new CheckersEngine(), chatMessageDao, userDao);
+                new FailingGameEventPublisher(), GameEngineRegistry.standard(), chatMessageDao, userDao);
         try {
             String initialBoard = new CheckersEngine().initialState();
             gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, initialBoard));
@@ -647,5 +651,30 @@ class PlayerServiceImplTest {
     void legalContinuations_unknownSession_throwsNotParticipantException() {
         assertThrows(NotParticipantException.class,
                 () -> playerService.legalContinuations(sessionToken, 999, "{\"path\":[]}"));
+    }
+
+    @Test
+    void eightsMatch_playingLastMatchingCard_player1Wins() throws Exception {
+        playerService.joinQueue(sessionToken, 2);
+        GameStateDTO matched = playerService.joinQueue(otherSessionToken, 2);
+        assertNotNull(matched);
+        assertTrue(matched.getBoardState().contains("\"game\":\"eights\""));
+
+        JSONObject board = new JSONObject();
+        board.put("game", "eights");
+        board.put("hand1", new JSONArray().put("7H"));
+        board.put("hand2", new JSONArray().put("9S").put("2C"));
+        board.put("draw", new JSONArray().put("3D"));
+        board.put("discard", new JSONArray().put("KH"));
+        board.put("namedSuit", JSONObject.NULL);
+        board.put("pendingDrawn", JSONObject.NULL);
+        gameSessionDao.addActiveSession(new GameStateDTO(
+                matched.getSessionId(), 2, 1, 2, GameStatus.ACTIVE, 1, null, board.toString()));
+
+        GameStateDTO result = playerService.makeMove(sessionToken, matched.getSessionId(),
+                new JSONObject().put("action", "play").put("card", "7H").toString());
+
+        assertEquals(GameStatus.FINISHED, result.getStatus());
+        assertEquals(1, result.getWinnerId());
     }
 }

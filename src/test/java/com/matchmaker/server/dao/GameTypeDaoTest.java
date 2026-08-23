@@ -9,6 +9,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -39,6 +40,22 @@ class GameTypeDaoTest {
         assertEquals(2, result.size());
         assertEquals("Checkers", result.get(0).getName());
         assertEquals("Chess", result.get(1).getName());
+    }
+
+    @Test
+    void findById_existingRow_returnsIt() {
+        GameTypeDTO created = gameTypeDao.insert(new GameTypeDTO(0, "Crazy Eights", "card game", 2, 2, 1, 1));
+
+        Optional<GameTypeDTO> found = gameTypeDao.findById(created.getId());
+
+        assertTrue(found.isPresent());
+        assertEquals("Crazy Eights", found.get().getName());
+        assertEquals(created.getId(), found.get().getId());
+    }
+
+    @Test
+    void findById_unknownId_returnsEmpty() {
+        assertTrue(gameTypeDao.findById(999).isEmpty());
     }
 
     @Test

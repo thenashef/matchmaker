@@ -4,6 +4,7 @@ import com.matchmaker.common.dto.GameTypeDTO;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class InMemoryGameTypeDao implements GameTypeDao {
@@ -18,6 +19,11 @@ public class InMemoryGameTypeDao implements GameTypeDao {
     @Override
     public List<GameTypeDTO> findAll() {
         return new ArrayList<>(gameTypes);
+    }
+
+    @Override
+    public Optional<GameTypeDTO> findById(int id) {
+        return gameTypes.stream().filter(gameType -> gameType.getId() == id).findFirst();
     }
 
     @Override

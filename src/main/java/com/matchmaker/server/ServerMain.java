@@ -9,8 +9,7 @@ import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
 import com.matchmaker.server.dao.JdbcUserDao;
 import com.matchmaker.server.dao.UserDao;
-import com.matchmaker.server.game.GameEngine;
-import com.matchmaker.server.game.checkers.CheckersEngine;
+import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.jms.ActiveMqGameEventPublisher;
 import com.matchmaker.server.jms.EmbeddedJmsBroker;
 import com.matchmaker.server.jms.GameEventPublisher;
@@ -88,12 +87,12 @@ public class ServerMain {
                 "tcp://localhost:" + jmsPort, jmsServiceUsername, jmsServicePassword);
         Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
-        GameEngine gameEngine = new CheckersEngine();
+        GameEngineRegistry gameEngines = GameEngineRegistry.standard();
 
         Registry registry = LocateRegistry.createRegistry(rmiPort);
         AuthServiceImpl authService = new AuthServiceImpl(sessionManager, userDao);
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
-                matchmakingQueue, gameEventPublisher, gameEngine, chatMessageDao, userDao);
+                matchmakingQueue, gameEventPublisher, gameEngines, chatMessageDao, userDao);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao,
                 gameSessionDao, gameEventPublisher, matchmakingQueue, DISCONNECT_TIMEOUT);
 

@@ -84,18 +84,25 @@ public class JdbcMatchmakingQueue implements MatchmakingQueue {
             }
         }
 
-        String findOwnRowSql = "SELECT ID FROM MatchmakingQueue "
+        String findOwnRowSql = "SELECT ID, GameTypeID FROM MatchmakingQueue "
                 + "WHERE UserID = ? AND Status = 'WAITING' LIMIT 1";
-        boolean alreadyQueued;
+        Integer ownQueueId = null;
+        Integer ownGameTypeId = null;
         try (PreparedStatement stmt = conn.prepareStatement(findOwnRowSql)) {
             stmt.setInt(1, userId);
             try (ResultSet rs = stmt.executeQuery()) {
-                alreadyQueued = rs.next();
+                if (rs.next()) {
+                    ownQueueId = rs.getInt("ID");
+                    ownGameTypeId = rs.getInt("GameTypeID");
+                }
             }
         }
 
-        if (alreadyQueued) {
+        if (ownQueueId != null && ownGameTypeId == gameTypeId) {
             return null;
+        }
+        if (ownQueueId != null) {
+            deleteQueueRow(conn, ownQueueId);
         }
 
         // Ordered candidates rather than a single LIMIT 1: a candidate can be stale (e.g. they were

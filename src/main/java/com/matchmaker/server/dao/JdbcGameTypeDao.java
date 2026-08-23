@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class JdbcGameTypeDao implements GameTypeDao {
 
@@ -28,18 +29,29 @@ public class JdbcGameTypeDao implements GameTypeDao {
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             while (rs.next()) {
-                result.add(new GameTypeDTO(
-                        rs.getInt("ID"),
-                        rs.getString("Name"),
-                        rs.getString("Description"),
-                        rs.getInt("MinPlayers"),
-                        rs.getInt("MaxPlayers"),
-                        rs.getInt("BoardRows"),
-                        rs.getInt("BoardCols")));
+                result.add(fromRow(rs));
             }
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to list game types", e);
+        }
+    }
+
+    @Override
+    public Optional<GameTypeDTO> findById(int id) {
+        String sql = "SELECT ID, Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols "
+                + "FROM GameType WHERE ID = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(fromRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new DaoException("Failed to find game type " + id, e);
         }
     }
 
@@ -66,5 +78,16 @@ public class JdbcGameTypeDao implements GameTypeDao {
         } catch (SQLException e) {
             throw new DaoException("Failed to insert game type '" + newGameType.getName() + "'", e);
         }
+    }
+
+    private static GameTypeDTO fromRow(ResultSet rs) throws SQLException {
+        return new GameTypeDTO(
+                rs.getInt("ID"),
+                rs.getString("Name"),
+                rs.getString("Description"),
+                rs.getInt("MinPlayers"),
+                rs.getInt("MaxPlayers"),
+                rs.getInt("BoardRows"),
+                rs.getInt("BoardCols"));
     }
 }
