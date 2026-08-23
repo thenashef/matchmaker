@@ -48,6 +48,10 @@ public interface PlayerService extends Remote {
     List<GameStateDTO> getHistory(String sessionToken)
         throws RemoteException, AuthenticationException;
 
+    /** Players ranked by rating, then wins, then username. Includes admin accounts; strips IsAdmin. */
+    List<UserDTO> listLeaderboard(String sessionToken)
+        throws RemoteException, AuthenticationException;
+
     /** Fresh copy of the caller's own profile (e.g. to pick up a rating change since login). */
     UserDTO getProfile(String sessionToken)
         throws RemoteException, AuthenticationException;

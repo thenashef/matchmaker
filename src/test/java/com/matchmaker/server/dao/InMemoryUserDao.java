@@ -58,4 +58,11 @@ public class InMemoryUserDao implements UserDao {
                         record.wins(), record.losses(), record.draws(), record.rating(), record.createdAt())
                 : record);
     }
+
+    public synchronized void setStats(int userId, int wins, int losses, int draws, int rating) {
+        usersByUsername.replaceAll((username, record) -> record.id() == userId
+                ? new UserRecord(record.id(), record.username(), record.passwordHash(), record.admin(),
+                        wins, losses, draws, rating, record.createdAt())
+                : record);
+    }
 }

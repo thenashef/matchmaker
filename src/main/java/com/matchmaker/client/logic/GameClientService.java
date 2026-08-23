@@ -87,6 +87,10 @@ public class GameClientService {
         runAsync(() -> serverConnection.listGameTypes(sessionToken), onSuccess, onError);
     }
 
+    public void listLeaderboard(Consumer<List<UserDTO>> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.listLeaderboard(sessionToken), onSuccess, onError);
+    }
+
     public void joinQueue(int gameTypeId, Consumer<GameStateDTO> onMatched, Runnable onWaiting, Consumer<Throwable> onError) {
         runAsync(() -> serverConnection.joinQueue(sessionToken, gameTypeId),
                 result -> {

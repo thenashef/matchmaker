@@ -52,6 +52,8 @@ public interface ServerConnection {
     GameStateDTO rematch(String sessionToken, int finishedSessionId)
             throws AuthenticationException, NotParticipantException, AlreadyInGameException;
 
+    List<UserDTO> listLeaderboard(String sessionToken) throws AuthenticationException;
+
     UserDTO getProfile(String sessionToken) throws AuthenticationException;
 
     UserDTO getOpponentProfile(String sessionToken, int gameSessionId)

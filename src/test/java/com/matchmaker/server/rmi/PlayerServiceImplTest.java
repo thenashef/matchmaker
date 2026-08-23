@@ -269,6 +269,54 @@ class PlayerServiceImplTest {
     }
 
     @Test
+    void listLeaderboard_sortsByRatingThenWinsThenUsername_andIncludesAdmins() throws Exception {
+        userDao.insert("admin", "hash", true); // id 3
+        userDao.setStats(1, 5, 1, 0, 1300);
+        userDao.setStats(2, 2, 3, 0, 1300);
+        userDao.setStats(3, 0, 0, 0, 1400);
+
+        List<UserDTO> board = playerService.listLeaderboard(sessionToken);
+
+        assertEquals(List.of(3, 1, 2), board.stream().map(UserDTO::getId).toList());
+        assertEquals("admin", board.get(0).getUsername());
+        assertTrue(board.stream().noneMatch(UserDTO::isAdmin),
+                "leaderboard must strip IsAdmin even for admin accounts that still appear");
+    }
+
+    @Test
+    void listLeaderboard_equalRatingAndWins_sortsByUsernameThenId() throws Exception {
+        userDao.insert("Alice", "hash"); // id 3
+        userDao.setStats(1, 1, 0, 0, 1200);
+        userDao.setStats(2, 1, 0, 0, 1200);
+        userDao.setStats(3, 1, 0, 0, 1200);
+
+        List<UserDTO> board = playerService.listLeaderboard(sessionToken);
+
+        assertEquals(List.of("Alice", "player1", "player2"),
+                board.stream().map(UserDTO::getUsername).toList());
+    }
+
+    @Test
+    void listLeaderboard_invalidToken_throwsAuthenticationException() {
+        assertThrows(AuthenticationException.class, () -> playerService.listLeaderboard("bogus-token"));
+    }
+
+    @Test
+    void getProfile_admin_stillReturnsRealAdminFlag() throws Exception {
+        userDao.insert("admin", "hash", true); // id 3
+        String adminToken = sessionManager.createSession(3);
+
+        UserDTO profile = playerService.getProfile(adminToken);
+        UserDTO onBoard = playerService.listLeaderboard(adminToken).stream()
+                .filter(user -> user.getId() == 3)
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(profile.isAdmin(), "getProfile must keep using toUserDTO, not the leaderboard mapper");
+        assertFalse(onBoard.isAdmin());
+    }
+
+    @Test
     void getProfile_validToken_returnsCallersOwnRecord() throws Exception {
         UserDTO profile = playerService.getProfile(sessionToken);
 

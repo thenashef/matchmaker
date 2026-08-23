@@ -29,6 +29,7 @@ import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Level;
@@ -292,6 +293,18 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     }
 
     @Override
+    public List<UserDTO> listLeaderboard(String sessionToken) throws RemoteException, AuthenticationException {
+        sessionManager.resolve(sessionToken);
+        return userDao.findAll().stream()
+                .sorted(Comparator.comparingInt(UserRecord::rating).reversed()
+                        .thenComparing(Comparator.comparingInt(UserRecord::wins).reversed())
+                        .thenComparing(UserRecord::username, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparingInt(UserRecord::id))
+                .map(PlayerServiceImpl::toLeaderboardEntry)
+                .toList();
+    }
+
+    @Override
     public UserDTO getProfile(String sessionToken) throws RemoteException, AuthenticationException {
         int userId = sessionManager.resolve(sessionToken);
         UserRecord record = userDao.findById(userId)
@@ -316,6 +329,12 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
     private static UserDTO toUserDTO(UserRecord record) {
         return new UserDTO(record.id(), record.username(), record.admin(),
+                record.wins(), record.losses(), record.draws(), record.rating());
+    }
+
+    /** Same stats as {@link #toUserDTO} but never publishes the admin privilege bit. */
+    private static UserDTO toLeaderboardEntry(UserRecord record) {
+        return new UserDTO(record.id(), record.username(), false,
                 record.wins(), record.losses(), record.draws(), record.rating());
     }
 }

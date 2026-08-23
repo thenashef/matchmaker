@@ -195,6 +195,15 @@ public class RmiJmsServerConnection implements ServerConnection {
     }
 
     @Override
+    public List<UserDTO> listLeaderboard(String sessionToken) throws AuthenticationException {
+        try {
+            return playerService.listLeaderboard(sessionToken);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("listLeaderboard() failed", e);
+        }
+    }
+
+    @Override
     public UserDTO getProfile(String sessionToken) throws AuthenticationException {
         try {
             return playerService.getProfile(sessionToken);

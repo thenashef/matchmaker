@@ -288,6 +288,22 @@ class GameClientServiceTest {
     }
 
     @Test
+    void listLeaderboard_success_returnsWhatConnectionReturns() throws Exception {
+        loginAsUser(1);
+        List<UserDTO> board = List.of(
+                new UserDTO(2, "bob", false, 4, 1, 0, 1300),
+                new UserDTO(1, "user1", false, 0, 0, 0, 1000));
+        serverConnection.setLeaderboard(board);
+
+        List<UserDTO> result = await(capture ->
+                service.listLeaderboard(capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(2, result.size());
+        assertEquals("bob", result.get(0).getUsername());
+        assertEquals(1300, result.get(0).getRating());
+    }
+
+    @Test
     void getProfile_success_updatesCachedCurrentUserAndReachesOnSuccess() throws Exception {
         loginAsUser(1);
         UserDTO refreshed = new UserDTO(1, "user1", false, 5, 1, 0, 1240);

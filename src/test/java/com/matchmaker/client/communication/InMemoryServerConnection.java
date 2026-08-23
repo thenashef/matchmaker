@@ -48,6 +48,7 @@ public class InMemoryServerConnection implements ServerConnection {
     private NotParticipantException rematchNotParticipantFailure;
     private AlreadyInGameException rematchAlreadyInGameFailure;
     private int lastRematchFinishedSessionId = -1;
+    private List<UserDTO> leaderboard = new ArrayList<>();
     private UserDTO profileResult;
     private UserDTO opponentProfileResult;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
@@ -80,6 +81,7 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setRematchNotParticipantFailure(NotParticipantException failure) { this.rematchNotParticipantFailure = failure; }
     public void setRematchAlreadyInGameFailure(AlreadyInGameException failure) { this.rematchAlreadyInGameFailure = failure; }
     public int lastRematchFinishedSessionId() { return lastRematchFinishedSessionId; }
+    public void setLeaderboard(List<UserDTO> leaderboard) { this.leaderboard = leaderboard; }
     public void setProfileResult(UserDTO result) { this.profileResult = result; }
     public void setOpponentProfileResult(UserDTO result) { this.opponentProfileResult = result; }
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
@@ -166,6 +168,11 @@ public class InMemoryServerConnection implements ServerConnection {
         if (rematchNotParticipantFailure != null) throw rematchNotParticipantFailure;
         if (rematchAlreadyInGameFailure != null) throw rematchAlreadyInGameFailure;
         return rematchResult;
+    }
+
+    @Override
+    public List<UserDTO> listLeaderboard(String sessionToken) {
+        return leaderboard;
     }
 
     @Override
