@@ -37,6 +37,8 @@ public class AdminMain extends Application {
     }
 
     public static void main(String[] args) {
+        // See ServerMain.main() -- avoids a ~5s mDNS hostname-resolution stall on the first RMI call.
+        System.setProperty("java.rmi.server.hostname", "127.0.0.1");
         launch(args);
     }
 }
