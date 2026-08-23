@@ -34,17 +34,22 @@ docker compose down -v && docker compose up -d
 docker compose exec -T mysql mysql -uroot -proot matchmaker < db/seed-demo-users.sql
 ```
 
-Creates two ordinary players and one admin account, so you can try the clients without
-registering through the UI first:
+Creates two ordinary players, one admin account, and three leaderboard filler accounts
+with canned win/loss/draw records, so you can try the clients without registering through
+the UI first and the lobby leaderboard is never empty:
 
-| Username  | Password | Role  |
-|-----------|----------|-------|
-| `playera` | `1234`   | Player |
-| `playerb` | `1234`   | Player |
-| `admin`   | `admin`  | Admin  |
+| Username       | Password | Role   | Record (W/L/D) | Rating |
+|----------------|----------|--------|----------------|--------|
+| `playera`      | `1234`   | Player | 0/0/0          | 1200   |
+| `playerb`      | `1234`   | Player | 0/0/0          | 1200   |
+| `admin`        | `admin`  | Admin  | 0/0/0          | 1200   |
+| `demo-users1`  | `1234`   | Player | 12/3/1         | 1364   |
+| `demo-users2`  | `1234`   | Player | 6/6/4          | 1200   |
+| `demo-users3`  | `1234`   | Player | 2/10/3         | 1088   |
 
-The script is idempotent (`INSERT IGNORE`) — re-running it after the accounts already
-exist is a harmless no-op. Note that a full `mvn test` run does *not* touch these
+The script is idempotent — re-running it after the accounts already exist is a
+harmless no-op for `playera`/`playerb`/`admin`, and restores the canned records for
+`demo-users1`/`2`/`3`. Note that a full `mvn test` run does *not* touch these
 accounts; they live in `matchmaker`, and the DB-integration tests run against the
 separate `matchmaker_test` database.
 
