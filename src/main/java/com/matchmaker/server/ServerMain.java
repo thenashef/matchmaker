@@ -48,6 +48,11 @@ public class ServerMain {
         // InetAddress.getLocalHost() -- on macOS, a ".local" mDNS hostname with no /etc/hosts
         // entry makes that resolution take ~5s. Pinning it to loopback skips that lookup entirely.
         System.setProperty("java.rmi.server.hostname", "127.0.0.1");
+        // ActiveMQ's IdGenerator independently calls InetAddress.getLocalHost() (via
+        // InetAddressUtil.getLocalHostName()) on the first JMS connection in the JVM, unless this
+        // property is set -- same ~5s mDNS stall as above, but a separate code path that the RMI
+        // property above does not cover.
+        System.setProperty("activemq.idgenerator.hostname", "127.0.0.1");
 
         Started started = startWithImpls(RMI_PORT, JMS_PORT);
         Runtime.getRuntime().addShutdownHook(new Thread(started::close, "server-shutdown"));

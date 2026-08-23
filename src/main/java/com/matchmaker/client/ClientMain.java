@@ -40,6 +40,9 @@ public class ClientMain extends Application {
         // See ServerMain.main() -- avoids a ~5s mDNS hostname-resolution stall on the first RMI
         // call, which otherwise happens inside start() before the login window can even appear.
         System.setProperty("java.rmi.server.hostname", "127.0.0.1");
+        // See ServerMain.main() -- ActiveMQ's IdGenerator hits the same mDNS stall independently,
+        // on this JVM's first JMS connection (made inside login()).
+        System.setProperty("activemq.idgenerator.hostname", "127.0.0.1");
         launch(args);
     }
 }
