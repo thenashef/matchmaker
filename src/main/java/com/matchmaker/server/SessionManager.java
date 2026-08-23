@@ -68,6 +68,11 @@ public class SessionManager {
         Instant now = Instant.now();
         int before = sessionByToken.size();
         sessionByToken.values().removeIf(session -> isExpired(session, now));
+        Set<Integer> remainingUserIds = new HashSet<>();
+        for (Session session : sessionByToken.values()) {
+            remainingUserIds.add(session.userId());
+        }
+        lastSeenByUserId.keySet().removeIf(userId -> !remainingUserIds.contains(userId));
         return before - sessionByToken.size();
     }
 

@@ -1,6 +1,7 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.GameTiming;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
@@ -35,7 +36,7 @@ import java.util.logging.Logger;
 public class EightsController {
 
     private static final Logger LOG = Logger.getLogger(EightsController.class.getName());
-    private static final int TURN_TIMEOUT_SECONDS = 60;
+    private static final int TURN_TIMEOUT_SECONDS = GameTiming.TURN_SECONDS;
     private static final AudioClip TURN_SOUND = loadTurnSound();
 
     private static AudioClip loadTurnSound() {

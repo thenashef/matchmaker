@@ -22,7 +22,7 @@ public class JdbcGameTypeDao implements GameTypeDao {
 
     @Override
     public List<GameTypeDTO> findAll() {
-        String sql = "SELECT ID, Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols "
+        String sql = "SELECT " + GameTypeSql.COLUMNS + " "
                 + "FROM GameType ORDER BY ID";
         List<GameTypeDTO> result = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
@@ -39,7 +39,7 @@ public class JdbcGameTypeDao implements GameTypeDao {
 
     @Override
     public Optional<GameTypeDTO> findById(int id) {
-        String sql = "SELECT ID, Name, Description, MinPlayers, MaxPlayers, BoardRows, BoardCols "
+        String sql = "SELECT " + GameTypeSql.COLUMNS + " "
                 + "FROM GameType WHERE ID = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {

@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
-import java.rmi.server.UnicastRemoteObject;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -27,31 +26,9 @@ class ServerMainTest {
     }
 
     @AfterEach
-    void tearDownRegistry() {
-        Registry registry = started != null ? started.registry() : null;
-
-        if (registry != null) {
-            try { registry.unbind("AuthService"); } catch (Exception ignored) { }
-            try { registry.unbind("PlayerService"); } catch (Exception ignored) { }
-            try { registry.unbind("AdminService"); } catch (Exception ignored) { }
-        }
-        if (started != null && started.authService() != null) {
-            try { UnicastRemoteObject.unexportObject(started.authService(), true); } catch (Exception ignored) { }
-        }
-        if (started != null && started.playerService() != null) {
-            try { UnicastRemoteObject.unexportObject(started.playerService(), true); } catch (Exception ignored) { }
-        }
-        if (started != null && started.adminService() != null) {
-            try { UnicastRemoteObject.unexportObject(started.adminService(), true); } catch (Exception ignored) { }
-        }
-        if (registry != null) {
-            try { UnicastRemoteObject.unexportObject(registry, true); } catch (Exception ignored) { }
-        }
-        if (started != null && started.jmsBroker() != null) {
-            try { started.jmsBroker().stop(); } catch (Exception ignored) { }
-        }
-        if (started != null && started.sessionWatchdog() != null) {
-            started.sessionWatchdog().stop();
+    void tearDownServer() {
+        if (started != null) {
+            started.close();
         }
     }
 

@@ -91,12 +91,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
             }
 
             if (opponentUserId != null) {
-                try {
-                    gameEventPublisher.publishToPlayer(opponentUserId,
-                            new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result));
-                } catch (JmsPublishException e) {
-                    LOG.log(Level.WARNING, "Failed to notify opponent " + opponentUserId + " of match", e);
-                }
+                publishToPlayerQuietly(opponentUserId,
+                        new GameEventDTO(GameEventType.MATCH_FOUND, result.getSessionId(), result),
+                        "match");
             }
         }
 
@@ -116,13 +113,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
         GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
                 .orElseThrow(() -> new IllegalMoveException("No active game session " + gameSessionId));
-
-        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
-        }
-        if (session.getCurrentTurnUserId() == null || session.getCurrentTurnUserId() != userId) {
-            throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
-        }
+        requireTurn(session, userId);
 
         String currentBoardState = session.getBoardState();
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
@@ -156,12 +147,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                     + "it is no longer user " + userId + "'s turn (or the game already ended)");
         }
 
-        try {
-            gameEventPublisher.publishToSession(gameSessionId,
-                    new GameEventDTO(GameEventType.MOVE_MADE, gameSessionId, persistedSession));
-        } catch (JmsPublishException e) {
-            LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of move", e);
-        }
+        publishToSessionQuietly(gameSessionId,
+                new GameEventDTO(GameEventType.MOVE_MADE, gameSessionId, persistedSession),
+                "move");
 
         return persistedSession;
     }
@@ -173,13 +161,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
 
         GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
                 .orElseThrow(() -> new NotParticipantException("No active game session " + gameSessionId));
-
-        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
-        }
-        if (session.getCurrentTurnUserId() == null || session.getCurrentTurnUserId() != userId) {
-            throw new NotYourTurnException("It is not user " + userId + "'s turn in session " + gameSessionId);
-        }
+        requireTurn(session, userId);
 
         boolean isPlayer1Turn = session.getPlayer1Id() == userId;
         return engineFor(session.getGameTypeId())
@@ -198,12 +180,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         }
 
         chatMessageDao.insert(gameSessionId, userId, safeContent);
-        try {
-            gameEventPublisher.publishToSession(gameSessionId,
-                    new GameEventDTO(GameEventType.CHAT_MESSAGE, gameSessionId, userId, safeContent));
-        } catch (JmsPublishException e) {
-            LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of chat message", e);
-        }
+        publishToSessionQuietly(gameSessionId,
+                new GameEventDTO(GameEventType.CHAT_MESSAGE, gameSessionId, userId, safeContent),
+                "chat message");
     }
 
     @Override
@@ -217,9 +196,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     private void requireActiveParticipant(int gameSessionId, int userId) throws NotParticipantException {
         GameStateDTO session = gameSessionDao.findActiveById(gameSessionId)
                 .orElseThrow(() -> new NotParticipantException("No active game session " + gameSessionId));
-        if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
-            throw new NotParticipantException("User " + userId + " is not a participant in session " + gameSessionId);
-        }
+        requireParticipant(session, userId);
     }
 
     @Override
@@ -238,12 +215,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         }
 
         GameStateDTO finalState = abandoned.get();
-        try {
-            gameEventPublisher.publishToSession(gameSessionId,
-                    new GameEventDTO(GameEventType.SESSION_ABANDONED, gameSessionId, finalState));
-        } catch (JmsPublishException e) {
-            LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of resignation", e);
-        }
+        publishToSessionQuietly(gameSessionId,
+                new GameEventDTO(GameEventType.SESSION_ABANDONED, gameSessionId, finalState),
+                "resignation");
         return finalState;
     }
 
@@ -269,12 +243,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
                 engineFor(finished.getGameTypeId()).initialState());
 
         int otherUserId = opponentId(newSession, userId);
-        try {
-            gameEventPublisher.publishToPlayer(otherUserId,
-                    new GameEventDTO(GameEventType.REMATCH_CREATED, newSession.getSessionId(), newSession));
-        } catch (JmsPublishException e) {
-            LOG.log(Level.WARNING, "Failed to notify " + otherUserId + " of rematch", e);
-        }
+        publishToPlayerQuietly(otherUserId,
+                new GameEventDTO(GameEventType.REMATCH_CREATED, newSession.getSessionId(), newSession),
+                "rematch");
 
         return newSession;
     }
@@ -315,7 +286,7 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         int opponentId = opponentId(session, userId);
         UserRecord record = userDao.findById(opponentId)
                 .orElseThrow(() -> new NotParticipantException("Opponent " + opponentId + " no longer exists"));
-        return record.toUserDTO();
+        return record.toPublicUserDTO();
     }
 
     private GameEngine engineFor(int gameTypeId) {
@@ -328,6 +299,31 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
         if (session.getPlayer1Id() != userId && session.getPlayer2Id() != userId) {
             throw new NotParticipantException(
                     "User " + userId + " is not a participant in session " + session.getSessionId());
+        }
+    }
+
+    private static void requireTurn(GameStateDTO session, int userId)
+            throws NotParticipantException, NotYourTurnException {
+        requireParticipant(session, userId);
+        if (session.getCurrentTurnUserId() == null || session.getCurrentTurnUserId() != userId) {
+            throw new NotYourTurnException(
+                    "It is not user " + userId + "'s turn in session " + session.getSessionId());
+        }
+    }
+
+    private void publishToPlayerQuietly(int userId, GameEventDTO event, String what) {
+        try {
+            gameEventPublisher.publishToPlayer(userId, event);
+        } catch (JmsPublishException e) {
+            LOG.log(Level.WARNING, "Failed to notify " + userId + " of " + what, e);
+        }
+    }
+
+    private void publishToSessionQuietly(int sessionId, GameEventDTO event, String what) {
+        try {
+            gameEventPublisher.publishToSession(sessionId, event);
+        } catch (JmsPublishException e) {
+            LOG.log(Level.WARNING, "Failed to notify session " + sessionId + " of " + what, e);
         }
     }
 

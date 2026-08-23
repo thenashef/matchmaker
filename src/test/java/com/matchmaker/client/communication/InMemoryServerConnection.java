@@ -56,6 +56,7 @@ public class InMemoryServerConnection implements ServerConnection {
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
     private volatile String lastKeepAliveToken;
 
+    private RuntimeException subscribeToPlayerQueueFailure;
     private final List<MakeMoveCall> makeMoveCalls = new ArrayList<>();
     private final Map<Integer, List<ServerEventListener>> playerQueueListeners = new HashMap<>();
     private final Map<Integer, List<ServerEventListener>> sessionTopicListeners = new HashMap<>();
@@ -63,6 +64,9 @@ public class InMemoryServerConnection implements ServerConnection {
 
     public void setLoginResult(LoginResultDTO result) { this.loginResult = result; }
     public void setLoginFailure(AuthenticationException failure) { this.loginFailure = failure; }
+    public void setSubscribeToPlayerQueueFailure(RuntimeException failure) {
+        this.subscribeToPlayerQueueFailure = failure;
+    }
     public void setRegisterResult(UserDTO result) { this.registerResult = result; }
     public void setRegisterFailure(UsernameTakenException failure) { this.registerFailure = failure; }
     public void setGameTypes(List<GameTypeDTO> gameTypes) { this.gameTypes = gameTypes; }
@@ -189,6 +193,9 @@ public class InMemoryServerConnection implements ServerConnection {
 
     @Override
     public Subscription subscribeToPlayerQueue(int userId, ServerEventListener listener) {
+        if (subscribeToPlayerQueueFailure != null) {
+            throw subscribeToPlayerQueueFailure;
+        }
         playerQueueListeners.computeIfAbsent(userId, id -> new ArrayList<>()).add(listener);
         return () -> playerQueueListeners.getOrDefault(userId, List.of()).remove(listener);
     }

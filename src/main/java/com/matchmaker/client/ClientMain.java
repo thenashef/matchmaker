@@ -5,14 +5,15 @@ import com.matchmaker.client.logic.GameClientService;
 import com.matchmaker.client.presentation.LoginController;
 import com.matchmaker.client.presentation.SceneNavigator;
 import com.matchmaker.common.net.LoopbackHosts;
+import com.matchmaker.common.net.ServicePorts;
 import javafx.application.Application;
 import javafx.stage.Stage;
 
 public class ClientMain extends Application {
 
-    private static final String SERVER_HOST = "localhost";
-    private static final int RMI_PORT = 1099;
-    private static final int JMS_PORT = 61616;
+    private static final String SERVER_HOST = ServicePorts.LOCAL_HOST;
+    private static final int RMI_PORT = ServicePorts.RMI;
+    private static final int JMS_PORT = ServicePorts.JMS;
 
     private RmiJmsServerConnection serverConnection;
     private GameClientService gameClientService;

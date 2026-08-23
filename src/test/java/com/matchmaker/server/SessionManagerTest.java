@@ -143,6 +143,18 @@ class SessionManagerTest {
     }
 
     @Test
+    void evictExpired_clearsLastSeenForUsersWithNoRemainingTokens() throws Exception {
+        SessionManager sessionManager = new SessionManager(Duration.ofMillis(20));
+        sessionManager.createSession(1);
+        assertTrue(sessionManager.lastSeen(1).isPresent());
+
+        Thread.sleep(40);
+        sessionManager.evictExpired();
+
+        assertTrue(sessionManager.lastSeen(1).isEmpty());
+    }
+
+    @Test
     void resolve_nullToken_throwsRatherThanNullPointer() {
         SessionManager sessionManager = new SessionManager();
 

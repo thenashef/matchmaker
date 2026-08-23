@@ -3,7 +3,6 @@ package com.matchmaker.admin.communication;
 import com.matchmaker.common.communication.ServerEventListener;
 import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.AdminDashboardStatsDTO;
-import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
@@ -13,16 +12,11 @@ import com.matchmaker.common.exceptions.AuthenticationException;
 import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotAdminException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
-import com.matchmaker.common.jms.JmsClientSupport;
+import com.matchmaker.common.jms.JmsClientHandle;
 import com.matchmaker.common.rmi.AdminService;
 import com.matchmaker.common.rmi.AuthService;
 
-import javax.jms.Connection;
 import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.ObjectMessage;
-import javax.jms.Session;
-import javax.jms.Topic;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -39,8 +33,7 @@ public class RmiJmsAdminConnection implements AdminConnection {
     private final AdminService adminService;
     private final String host;
     private final int jmsPort;
-    private Connection jmsConnection;
-    private Session jmsSession;
+    private final JmsClientHandle jms = new JmsClientHandle();
 
     public RmiJmsAdminConnection(String host, int rmiPort, int jmsPort) {
         this.host = host;
@@ -56,9 +49,7 @@ public class RmiJmsAdminConnection implements AdminConnection {
 
     private void connectJms(int userId, String sessionToken) {
         try {
-            JmsClientSupport.closeQuietly(jmsConnection);
-            jmsConnection = JmsClientSupport.open(host, jmsPort, userId, sessionToken);
-            jmsSession = JmsClientSupport.createSession(jmsConnection);
+            jms.connect(host, jmsPort, userId, sessionToken);
         } catch (JMSException e) {
             throw new AdminCommunicationException("Failed to connect to JMS broker at " + host + ":" + jmsPort, e);
         }
@@ -175,23 +166,7 @@ public class RmiJmsAdminConnection implements AdminConnection {
     @Override
     public synchronized Subscription subscribeToSessionTopic(int sessionId, ServerEventListener listener) {
         try {
-            Topic topic = jmsSession.createTopic("session." + sessionId + ".events");
-            MessageConsumer consumer = jmsSession.createConsumer(topic);
-            consumer.setMessageListener(message -> {
-                try {
-                    GameEventDTO event = (GameEventDTO) ((ObjectMessage) message).getObject();
-                    listener.onEvent(event);
-                } catch (JMSException e) {
-                    LOG.log(Level.WARNING, "Failed to read a JMS event", e);
-                }
-            });
-            return () -> {
-                try {
-                    consumer.close();
-                } catch (JMSException e) {
-                    LOG.log(Level.WARNING, "Failed to close a JMS subscription", e);
-                }
-            };
+            return jms.subscribe(session -> session.createTopic("session." + sessionId + ".events"), listener, LOG);
         } catch (JMSException e) {
             throw new AdminCommunicationException("Failed to subscribe to session " + sessionId, e);
         }
@@ -199,16 +174,6 @@ public class RmiJmsAdminConnection implements AdminConnection {
 
     @Override
     public void close() {
-        jmsSession = null;
-        Connection connection = jmsConnection;
-        jmsConnection = null;
-        if (connection == null) {
-            return;
-        }
-        try {
-            connection.close();
-        } catch (JMSException e) {
-            LOG.log(Level.WARNING, "Failed to close JMS connection", e);
-        }
+        jms.close(LOG);
     }
 }

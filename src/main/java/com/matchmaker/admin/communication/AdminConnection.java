@@ -21,7 +21,6 @@ public interface AdminConnection {
 
     void keepAlive(String sessionToken) throws AuthenticationException;
 
-    /** Revokes the session token server-side. Never throws on an unknown token. */
     void logout(String sessionToken);
 
     List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException, NotAdminException;

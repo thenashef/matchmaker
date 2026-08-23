@@ -48,7 +48,7 @@ public class JdbcUserDao implements UserDao {
 
     @Override
     public Optional<UserRecord> findByUsername(String username) {
-        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+        String sql = "SELECT " + UserSql.COLUMNS + " "
                 + "FROM User WHERE Username = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -66,7 +66,7 @@ public class JdbcUserDao implements UserDao {
 
     @Override
     public Optional<UserRecord> findById(int id) {
-        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+        String sql = "SELECT " + UserSql.COLUMNS + " "
                 + "FROM User WHERE ID = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -84,7 +84,7 @@ public class JdbcUserDao implements UserDao {
 
     @Override
     public List<UserRecord> findAll() {
-        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+        String sql = "SELECT " + UserSql.COLUMNS + " "
                 + "FROM User ORDER BY ID";
         List<UserRecord> result = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
@@ -116,7 +116,7 @@ public class JdbcUserDao implements UserDao {
     }
 
     private Optional<UserRecord> findById(Connection conn, int id) throws SQLException {
-        String sql = "SELECT ID, Username, Password, IsAdmin, Wins, Losses, Draws, Rating, CreatedAt "
+        String sql = "SELECT " + UserSql.COLUMNS + " "
                 + "FROM User WHERE ID = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, id);

@@ -9,12 +9,15 @@ import java.util.List;
 
 public final class JmsClientSupport {
 
+    public static final List<String> TRUSTED_PACKAGES =
+            List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums");
+
     private JmsClientSupport() {
     }
 
     public static Connection open(String host, int port, int userId, String token) throws JMSException {
         ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://" + host + ":" + port);
-        factory.setTrustedPackages(List.of("com.matchmaker.common.dto", "com.matchmaker.common.enums"));
+        factory.setTrustedPackages(TRUSTED_PACKAGES);
         Connection connection = factory.createConnection(String.valueOf(userId), token);
         connection.start();
         return connection;

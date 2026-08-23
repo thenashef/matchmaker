@@ -22,6 +22,9 @@ public final class GameEngineRegistry {
     }
 
     public GameEngine forName(String name) {
+        if (name == null) {
+            throw new IllegalArgumentException("No game engine registered for 'null'");
+        }
         GameEngine engine = enginesByName.get(normalize(name));
         if (engine == null) {
             throw new IllegalArgumentException("No game engine registered for '" + name + "'");

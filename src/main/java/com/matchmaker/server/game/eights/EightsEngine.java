@@ -25,7 +25,7 @@ public class EightsEngine implements GameEngine {
     @Override
     public String initialState() {
         List<Card> deck = Card.standardDeck();
-        Collections.shuffle(deck, random);
+        shuffle(deck);
         List<Card> hand1 = new ArrayList<>(deck.subList(0, 7));
         List<Card> hand2 = new ArrayList<>(deck.subList(7, 14));
         List<Card> rest = new ArrayList<>(deck.subList(14, 52));
@@ -154,6 +154,12 @@ public class EightsEngine implements GameEngine {
         state.pendingDrawn = null;
     }
 
+    private void shuffle(List<Card> cards) {
+        synchronized (random) {
+            Collections.shuffle(cards, random);
+        }
+    }
+
     private void rebuildDrawIfNeeded(EightsState state) {
         if (!state.draw.isEmpty()) {
             return;
@@ -162,7 +168,7 @@ public class EightsEngine implements GameEngine {
             return;
         }
         Card top = state.discard.remove(state.discard.size() - 1);
-        Collections.shuffle(state.discard, random);
+        shuffle(state.discard);
         state.draw.addAll(state.discard);
         state.discard.clear();
         state.discard.add(top);

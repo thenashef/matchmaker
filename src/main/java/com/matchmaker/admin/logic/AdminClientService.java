@@ -8,14 +8,13 @@ import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.dto.UserDTO;
+import com.matchmaker.common.fx.FxAsync;
 import javafx.application.Platform;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,11 +25,7 @@ public class AdminClientService {
 
     private final AdminConnection adminConnection;
     private final Duration keepAliveInterval;
-    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "admin-communication");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService backgroundExecutor = FxAsync.daemonExecutor("admin-communication");
     private ScheduledExecutorService keepAliveExecutor;
 
     private UserDTO currentUser;
@@ -56,7 +51,6 @@ public class AdminClientService {
                 result -> {
                     if (!result.getUser().isAdmin()) {
                         adminConnection.logout(result.getSessionToken());
-                        adminConnection.close();
                         onNotAdmin.run();
                         return;
                     }
@@ -104,7 +98,8 @@ public class AdminClientService {
 
     public void monitorSession(int sessionId, Consumer<GameEventDTO> onEvent) {
         stopMonitoring();
-        sessionSubscription = adminConnection.subscribeToSessionTopic(sessionId, onEvent::accept);
+        sessionSubscription = adminConnection.subscribeToSessionTopic(sessionId,
+                event -> Platform.runLater(() -> onEvent.accept(event)));
     }
 
     public void stopMonitoring() {
@@ -130,34 +125,11 @@ public class AdminClientService {
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
         }
-        keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "keep-alive");
-            thread.setDaemon(true);
-            return thread;
-        });
-        long intervalMillis = keepAliveInterval.toMillis();
-        keepAliveExecutor.scheduleAtFixedRate(() -> {
-            try {
-                adminConnection.keepAlive(sessionToken);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "keepAlive failed", e);
-            }
-        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        keepAliveExecutor = FxAsync.startKeepAlive(keepAliveInterval,
+                () -> adminConnection.keepAlive(sessionToken), LOG);
     }
 
-    private <T> void runAsync(ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {
-        backgroundExecutor.submit(() -> {
-            try {
-                T result = action.get();
-                Platform.runLater(() -> onSuccess.accept(result));
-            } catch (Exception e) {
-                Platform.runLater(() -> onError.accept(e));
-            }
-        });
-    }
-
-    @FunctionalInterface
-    private interface ThrowingSupplier<T> {
-        T get() throws Exception;
+    private <T> void runAsync(FxAsync.ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {
+        FxAsync.run(backgroundExecutor, action, onSuccess, onError);
     }
 }

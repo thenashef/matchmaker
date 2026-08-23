@@ -1,6 +1,7 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.GameTiming;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
@@ -37,7 +38,7 @@ public class GameBoardController {
     private static final Logger LOG = Logger.getLogger(GameBoardController.class.getName());
 
     private static final int BOARD_SIZE = 8;
-    private static final int TURN_TIMEOUT_SECONDS = 60;
+    private static final int TURN_TIMEOUT_SECONDS = GameTiming.TURN_SECONDS;
     private static final String EMPTY_BOARD_JSON = "{\"rows\":8,\"cols\":8,\"pieces\":{}}";
     private static final AudioClip TURN_SOUND = loadTurnSound();
 

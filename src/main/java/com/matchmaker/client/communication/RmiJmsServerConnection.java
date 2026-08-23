@@ -3,7 +3,6 @@ package com.matchmaker.client.communication;
 import com.matchmaker.common.communication.ServerEventListener;
 import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
-import com.matchmaker.common.dto.GameEventDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
@@ -15,16 +14,11 @@ import com.matchmaker.common.exceptions.InvalidRegistrationException;
 import com.matchmaker.common.exceptions.NotParticipantException;
 import com.matchmaker.common.exceptions.NotYourTurnException;
 import com.matchmaker.common.exceptions.UsernameTakenException;
-import com.matchmaker.common.jms.JmsClientSupport;
+import com.matchmaker.common.jms.JmsClientHandle;
 import com.matchmaker.common.rmi.AuthService;
 import com.matchmaker.common.rmi.PlayerService;
 
-import javax.jms.Connection;
-import javax.jms.Destination;
 import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.ObjectMessage;
-import javax.jms.Session;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -41,8 +35,7 @@ public class RmiJmsServerConnection implements ServerConnection {
     private final PlayerService playerService;
     private final String host;
     private final int jmsPort;
-    private Connection jmsConnection;
-    private Session jmsSession;
+    private final JmsClientHandle jms = new JmsClientHandle();
 
     public RmiJmsServerConnection(String host, int rmiPort, int jmsPort) {
         this.host = host;
@@ -58,9 +51,7 @@ public class RmiJmsServerConnection implements ServerConnection {
 
     private void connectJms(int userId, String sessionToken) {
         try {
-            JmsClientSupport.closeQuietly(jmsConnection);
-            jmsConnection = JmsClientSupport.open(host, jmsPort, userId, sessionToken);
-            jmsSession = JmsClientSupport.createSession(jmsConnection);
+            jms.connect(host, jmsPort, userId, sessionToken);
         } catch (JMSException e) {
             throw new ServerCommunicationException("Failed to connect to JMS broker at " + host + ":" + jmsPort, e);
         }
@@ -234,45 +225,14 @@ public class RmiJmsServerConnection implements ServerConnection {
 
     @Override
     public void close() {
-        jmsSession = null;
-        Connection connection = jmsConnection;
-        jmsConnection = null;
-        if (connection == null) {
-            return;
-        }
-        try {
-            connection.close();
-        } catch (JMSException e) {
-            LOG.log(Level.WARNING, "Failed to close JMS connection", e);
-        }
+        jms.close(LOG);
     }
 
-    private synchronized Subscription subscribe(DestinationFactory destinationFactory, ServerEventListener listener) {
+    private Subscription subscribe(JmsClientHandle.DestinationFactory destinationFactory, ServerEventListener listener) {
         try {
-            Destination destination = destinationFactory.create(jmsSession);
-            MessageConsumer consumer = jmsSession.createConsumer(destination);
-            consumer.setMessageListener(message -> {
-                try {
-                    GameEventDTO event = (GameEventDTO) ((ObjectMessage) message).getObject();
-                    listener.onEvent(event);
-                } catch (JMSException e) {
-                    LOG.log(Level.WARNING, "Failed to read a JMS event", e);
-                }
-            });
-            return () -> {
-                try {
-                    consumer.close();
-                } catch (JMSException e) {
-                    LOG.log(Level.WARNING, "Failed to close a JMS subscription", e);
-                }
-            };
+            return jms.subscribe(destinationFactory, listener, LOG);
         } catch (JMSException e) {
             throw new ServerCommunicationException("Failed to subscribe", e);
         }
-    }
-
-    @FunctionalInterface
-    private interface DestinationFactory {
-        Destination create(Session session) throws JMSException;
     }
 }

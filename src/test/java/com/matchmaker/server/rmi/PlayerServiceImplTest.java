@@ -336,11 +336,13 @@ class PlayerServiceImplTest {
     @Test
     void getOpponentProfile_participant_returnsTheOtherPlayer() throws Exception {
         gameSessionDao.addActiveSession(new GameStateDTO(1, 1, 1, 2, GameStatus.ACTIVE, 1, null, "board"));
+        userDao.markAdmin(2);
 
         UserDTO opponent = playerService.getOpponentProfile(sessionToken, 1);
 
         assertEquals(2, opponent.getId());
         assertEquals("player2", opponent.getUsername());
+        assertFalse(opponent.isAdmin(), "opponent profiles must not leak the admin flag");
     }
 
     @Test

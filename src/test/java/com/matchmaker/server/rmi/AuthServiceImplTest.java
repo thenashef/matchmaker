@@ -71,6 +71,13 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void login_withNullPassword_throwsAuthenticationException() throws Exception {
+        authService.register("frank", "password123");
+
+        assertThrows(AuthenticationException.class, () -> authService.login("frank", null));
+    }
+
+    @Test
     void keepAlive_withValidToken_doesNotThrow() throws Exception {
         authService.register("erin", "password123");
         LoginResultDTO result = authService.login("erin", "password123");

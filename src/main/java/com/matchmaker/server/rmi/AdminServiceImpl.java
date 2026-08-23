@@ -113,14 +113,10 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     public void forceEndSession(String sessionToken, int gameSessionId)
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
-        gameSessionDao.forceEnd(gameSessionId).ifPresent(ended -> {
-            try {
-                gameEventPublisher.publishToSession(gameSessionId,
-                        new GameEventDTO(GameEventType.SESSION_FORCE_ENDED, gameSessionId, ended));
-            } catch (JmsPublishException e) {
-                LOG.log(Level.WARNING, "Failed to notify session " + gameSessionId + " of force-end", e);
-            }
-        });
+        gameSessionDao.forceEnd(gameSessionId).ifPresent(ended ->
+                publishToSessionQuietly(gameSessionId,
+                        new GameEventDTO(GameEventType.SESSION_FORCE_ENDED, gameSessionId, ended),
+                        "force-end"));
     }
 
     @Override
@@ -150,5 +146,13 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
             throw new NotAdminException("User " + userId + " is not an admin");
         }
         return record;
+    }
+
+    private void publishToSessionQuietly(int sessionId, GameEventDTO event, String what) {
+        try {
+            gameEventPublisher.publishToSession(sessionId, event);
+        } catch (JmsPublishException e) {
+            LOG.log(Level.WARNING, "Failed to notify session " + sessionId + " of " + what, e);
+        }
     }
 }

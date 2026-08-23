@@ -4,7 +4,9 @@ import com.matchmaker.server.dao.ChatMessageDao;
 import com.matchmaker.server.dao.DataSourceFactory;
 import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
+import com.matchmaker.common.GameTiming;
 import com.matchmaker.common.net.LoopbackHosts;
+import com.matchmaker.common.net.ServicePorts;
 import com.matchmaker.server.dao.JdbcChatMessageDao;
 import com.matchmaker.server.dao.JdbcGameSessionDao;
 import com.matchmaker.server.dao.JdbcGameTypeDao;
@@ -28,6 +30,7 @@ import javax.jms.Session;
 import javax.sql.DataSource;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -37,10 +40,10 @@ public class ServerMain {
 
     private static final Logger LOG = Logger.getLogger(ServerMain.class.getName());
 
-    public static final int RMI_PORT = 1099;
-    public static final int JMS_PORT = 61616;
+    public static final int RMI_PORT = ServicePorts.RMI;
+    public static final int JMS_PORT = ServicePorts.JMS;
     private static final Duration DISCONNECT_TIMEOUT = Duration.ofSeconds(60);
-    private static final Duration TURN_TIMEOUT = Duration.ofSeconds(60);
+    private static final Duration TURN_TIMEOUT = GameTiming.TURN_TIMEOUT;
     private static final Duration WATCHDOG_TICK_INTERVAL = Duration.ofSeconds(5);
 
     public static void main(String[] args) throws Exception {
@@ -51,7 +54,7 @@ public class ServerMain {
 
         System.out.println("MatchMaker RMI registry started on port " + RMI_PORT);
         System.out.println("Bound services: AuthService, PlayerService, AdminService");
-        System.out.println("JMS broker listening on tcp://localhost:" + JMS_PORT);
+        System.out.println("JMS broker listening on tcp://" + ServicePorts.LOCAL_HOST + ":" + JMS_PORT);
 
         Thread.currentThread().join();
     }
@@ -78,7 +81,7 @@ public class ServerMain {
 
         BrokerService jmsBroker = EmbeddedJmsBroker.start(jmsPort, jmsSecurityPlugin);
         Connection jmsConnection = JmsConnectionFactory.createForBroker(
-                "tcp://localhost:" + jmsPort, jmsServiceUsername, jmsServicePassword);
+                "tcp://" + ServicePorts.LOCAL_HOST + ":" + jmsPort, jmsServiceUsername, jmsServicePassword);
         Session jmsSession = jmsConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
         GameEventPublisher gameEventPublisher = new ActiveMqGameEventPublisher(jmsSession);
         GameEngineRegistry gameEngines = GameEngineRegistry.standard();
@@ -108,6 +111,13 @@ public class ServerMain {
 
         void close() {
             closing("session watchdog", sessionWatchdog::stop);
+            closing("AuthService unbind", () -> registry.unbind("AuthService"));
+            closing("PlayerService unbind", () -> registry.unbind("PlayerService"));
+            closing("AdminService unbind", () -> registry.unbind("AdminService"));
+            closing("AuthService unexport", () -> UnicastRemoteObject.unexportObject(authService, true));
+            closing("PlayerService unexport", () -> UnicastRemoteObject.unexportObject(playerService, true));
+            closing("AdminService unexport", () -> UnicastRemoteObject.unexportObject(adminService, true));
+            closing("RMI registry", () -> UnicastRemoteObject.unexportObject(registry, true));
             closing("JMS connection", jmsConnection::close);
             closing("JMS broker", jmsBroker::stop);
             if (dataSource instanceof AutoCloseable closeablePool) {

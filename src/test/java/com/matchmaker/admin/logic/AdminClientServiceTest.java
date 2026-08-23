@@ -99,7 +99,7 @@ class AdminClientServiceTest {
 
         assertTrue(rejected);
         assertEquals(List.of("token-2"), adminConnection.loggedOutTokens());
-        assertTrue(adminConnection.isClosed());
+        assertFalse(adminConnection.isClosed());
     }
 
     @Test

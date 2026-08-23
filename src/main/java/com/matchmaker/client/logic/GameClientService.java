@@ -8,15 +8,14 @@ import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
 import com.matchmaker.common.enums.GameEventType;
+import com.matchmaker.common.fx.FxAsync;
 import javafx.application.Platform;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,11 +26,7 @@ public class GameClientService {
 
     private final ServerConnection serverConnection;
     private final Duration keepAliveInterval;
-    private final ExecutorService backgroundExecutor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "server-communication");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService backgroundExecutor = FxAsync.daemonExecutor("server-communication");
     private ScheduledExecutorService keepAliveExecutor;
 
     private UserDTO currentUser;
@@ -69,6 +64,7 @@ public class GameClientService {
                         playerQueueSubscription = serverConnection.subscribeToPlayerQueue(
                                 currentUser.getId(), this::onPlayerQueueEvent);
                     } catch (Exception e) {
+                        abortFailedLogin();
                         onError.accept(e);
                         return;
                     }
@@ -209,23 +205,28 @@ public class GameClientService {
         }
     }
 
+    private void abortFailedLogin() {
+        if (keepAliveExecutor != null) {
+            keepAliveExecutor.shutdownNow();
+            keepAliveExecutor = null;
+        }
+        if (sessionToken != null) {
+            try {
+                serverConnection.logout(sessionToken);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "Failed to logout after a failed login subscribe", e);
+            }
+            sessionToken = null;
+        }
+        currentUser = null;
+    }
+
     private void startKeepAlive() {
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
         }
-        keepAliveExecutor = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "keep-alive");
-            thread.setDaemon(true);
-            return thread;
-        });
-        long intervalMillis = keepAliveInterval.toMillis();
-        keepAliveExecutor.scheduleAtFixedRate(() -> {
-            try {
-                serverConnection.keepAlive(sessionToken);
-            } catch (Exception e) {
-                LOG.log(Level.WARNING, "keepAlive failed", e);
-            }
-        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        keepAliveExecutor = FxAsync.startKeepAlive(keepAliveInterval,
+                () -> serverConnection.keepAlive(sessionToken), LOG);
     }
 
     private void enterGame(GameStateDTO initialState) {
@@ -292,19 +293,7 @@ public class GameClientService {
         });
     }
 
-    private <T> void runAsync(ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {
-        backgroundExecutor.submit(() -> {
-            try {
-                T result = action.get();
-                Platform.runLater(() -> onSuccess.accept(result));
-            } catch (Exception e) {
-                Platform.runLater(() -> onError.accept(e));
-            }
-        });
-    }
-
-    @FunctionalInterface
-    private interface ThrowingSupplier<T> {
-        T get() throws Exception;
+    private <T> void runAsync(FxAsync.ThrowingSupplier<T> action, Consumer<T> onSuccess, Consumer<Throwable> onError) {
+        FxAsync.run(backgroundExecutor, action, onSuccess, onError);
     }
 }

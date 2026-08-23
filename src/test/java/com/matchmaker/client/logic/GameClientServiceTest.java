@@ -76,6 +76,20 @@ class GameClientServiceTest {
     }
 
     @Test
+    void login_subscribeFailure_rollsBackSession() throws Exception {
+        UserDTO user = new UserDTO(1, "alice", false, 0, 0, 0, 1000);
+        serverConnection.setLoginResult(new LoginResultDTO(user, "token-123"));
+        serverConnection.setSubscribeToPlayerQueueFailure(new RuntimeException("jms down"));
+
+        Throwable error = await(capture -> service.login("alice", "pw", u -> fail("should not succeed"), capture));
+
+        assertEquals("jms down", error.getMessage());
+        assertNull(service.getCurrentUser());
+        assertEquals(List.of("token-123"), serverConnection.loggedOutTokens());
+        assertFalse(serverConnection.isSubscribedToPlayerQueue(1));
+    }
+
+    @Test
     void register_success_returnsUser() throws Exception {
         serverConnection.setRegisterResult(new UserDTO(2, "bob", false, 0, 0, 0, 1000));
 

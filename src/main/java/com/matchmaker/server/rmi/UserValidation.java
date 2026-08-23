@@ -21,6 +21,9 @@ final class UserValidation {
     }
 
     static boolean passwordMatches(String password, String passwordHash) {
+        if (password == null || passwordHash == null) {
+            return false;
+        }
         return BCrypt.checkpw(password, passwordHash);
     }
 
