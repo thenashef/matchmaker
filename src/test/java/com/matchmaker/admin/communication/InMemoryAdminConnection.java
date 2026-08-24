@@ -25,7 +25,6 @@ public class InMemoryAdminConnection implements AdminConnection {
     private LoginResultDTO loginResult;
     private AuthenticationException loginFailure;
     private List<GameTypeDTO> gameTypes = new ArrayList<>();
-    private GameTypeDTO addGameTypeResult;
     private List<UserDTO> users = new ArrayList<>();
     private List<UserDTO> onlineUsers = new ArrayList<>();
     private List<GameStateDTO> activeSessions = new ArrayList<>();
@@ -51,7 +50,6 @@ public class InMemoryAdminConnection implements AdminConnection {
     public void setLoginResult(LoginResultDTO result) { this.loginResult = result; }
     public void setLoginFailure(AuthenticationException failure) { this.loginFailure = failure; }
     public void setGameTypes(List<GameTypeDTO> gameTypes) { this.gameTypes = gameTypes; }
-    public void setAddGameTypeResult(GameTypeDTO result) { this.addGameTypeResult = result; }
     public void setUsers(List<UserDTO> users) { this.users = users; }
     public void setOnlineUsers(List<UserDTO> onlineUsers) { this.onlineUsers = onlineUsers; }
     public void setActiveSessions(List<GameStateDTO> activeSessions) { this.activeSessions = activeSessions; }
@@ -93,12 +91,6 @@ public class InMemoryAdminConnection implements AdminConnection {
     public List<GameTypeDTO> listGameTypes(String sessionToken) throws NotAdminException {
         if (notAdminFailure != null) throw notAdminFailure;
         return gameTypes;
-    }
-
-    @Override
-    public GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType) throws NotAdminException {
-        if (notAdminFailure != null) throw notAdminFailure;
-        return addGameTypeResult;
     }
 
     @Override

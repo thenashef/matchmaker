@@ -26,7 +26,6 @@ public class DashboardController {
     @FXML private TableColumn<GameStateDTO, String> turnColumn;
     @FXML private TableColumn<GameStateDTO, Void> monitorColumn;
     @FXML private Button refreshButton;
-    @FXML private Button newGameTypeButton;
     @FXML private Button usersButton;
     @FXML private Button loggedInUsersButton;
     @FXML private Button logoutButton;
@@ -69,12 +68,6 @@ public class DashboardController {
                     openInQueueLabel.setText("Open in queue: " + stats.getOpenInQueue());
                 },
                 error -> statusLabel.setText(error.getMessage()));
-    }
-
-    @FXML
-    private void onNewGameType() {
-        AddGameTypeController controller = navigator.show("AddGameTypeView.fxml", "MatchMaker Admin - New Game Type");
-        controller.init(adminClientService, navigator);
     }
 
     @FXML

@@ -95,16 +95,6 @@ public class RmiJmsAdminConnection implements AdminConnection {
     }
 
     @Override
-    public GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)
-            throws AuthenticationException, NotAdminException {
-        try {
-            return adminService.addGameType(sessionToken, newGameType);
-        } catch (RemoteException e) {
-            throw new AdminCommunicationException("addGameType() failed", e);
-        }
-    }
-
-    @Override
     public List<UserDTO> listUsers(String sessionToken) throws AuthenticationException, NotAdminException {
         try {
             return adminService.listUsers(sessionToken);

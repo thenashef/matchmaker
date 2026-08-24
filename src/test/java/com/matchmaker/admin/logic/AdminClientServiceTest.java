@@ -153,18 +153,6 @@ class AdminClientServiceTest {
     }
 
     @Test
-    void addGameType_success_returnsCreated() throws Exception {
-        GameTypeDTO created = new GameTypeDTO(5, "Battleship", "desc", 2, 2, 10, 10);
-        adminConnection.setAddGameTypeResult(created);
-
-        GameTypeDTO result = this.<GameTypeDTO>await(capture ->
-                service.addGameType(new GameTypeDTO(0, "Battleship", "desc", 2, 2, 10, 10),
-                        capture, err -> fail(String.valueOf(err))));
-
-        assertEquals(5, result.getId());
-    }
-
-    @Test
     void listUsers_success_returnsWhatConnectionReturns() throws Exception {
         adminConnection.setUsers(List.of(new UserDTO(1, "admin", true, 0, 0, 0, 1200)));
 

@@ -18,9 +18,6 @@ public interface AdminService extends Remote {
     List<GameTypeDTO> listGameTypes(String sessionToken)
         throws RemoteException, AuthenticationException, NotAdminException;
 
-    GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)
-        throws RemoteException, AuthenticationException, NotAdminException;
-
     List<UserDTO> listUsers(String sessionToken)
         throws RemoteException, AuthenticationException, NotAdminException;
 

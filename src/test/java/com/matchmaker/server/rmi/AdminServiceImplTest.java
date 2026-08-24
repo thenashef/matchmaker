@@ -15,7 +15,6 @@ import com.matchmaker.server.dao.InMemoryGameSessionDao;
 import com.matchmaker.server.dao.InMemoryGameTypeDao;
 import com.matchmaker.server.dao.InMemoryUserDao;
 import com.matchmaker.server.dao.UserRecord;
-import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.jms.InMemoryGameEventPublisher;
 import com.matchmaker.server.matchmaking.InMemoryMatchmakingQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -52,7 +51,7 @@ class AdminServiceImplTest {
         gameEventPublisher = new InMemoryGameEventPublisher();
         matchmakingQueue = new InMemoryMatchmakingQueue();
         adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao, gameSessionDao,
-                gameEventPublisher, matchmakingQueue, GameEngineRegistry.standard(), Duration.ofSeconds(60));
+                gameEventPublisher, matchmakingQueue, Duration.ofSeconds(60));
 
         Optional<UserRecord> admin = userDao.insert("admin", "hash");
         userDao.markAdmin(admin.get().id());
@@ -83,27 +82,6 @@ class AdminServiceImplTest {
     @Test
     void listGameTypes_asNonAdmin_throwsNotAdminException() {
         assertThrows(NotAdminException.class, () -> adminService.listGameTypes(playerToken));
-    }
-
-    @Test
-    void addGameType_asAdmin_insertsAndReturnsCreated() throws Exception {
-        GameTypeDTO created = adminService.addGameType(adminToken,
-                new GameTypeDTO(0, "Checkers", "Classic checkers", 2, 2, 8, 8));
-
-        assertTrue(created.getId() > 0);
-        assertEquals(1, gameTypeDao.findAll().size());
-    }
-
-    @Test
-    void addGameType_asNonAdmin_throwsNotAdminException() {
-        GameTypeDTO newGameType = new GameTypeDTO(0, "Checkers", "Classic checkers", 2, 2, 8, 8);
-        assertThrows(NotAdminException.class, () -> adminService.addGameType(playerToken, newGameType));
-    }
-
-    @Test
-    void addGameType_unknownEngine_throwsIllegalArgumentException() {
-        GameTypeDTO newGameType = new GameTypeDTO(0, "Battleship", "Naval combat", 2, 2, 10, 10);
-        assertThrows(IllegalArgumentException.class, () -> adminService.addGameType(adminToken, newGameType));
     }
 
     @Test

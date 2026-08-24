@@ -16,7 +16,6 @@
     </HBox>
     <HBox spacing="10">
         <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
-        <Button fx:id="newGameTypeButton" text="New Game Type" onAction="#onNewGameType"/>
         <Button fx:id="usersButton" text="Users" onAction="#onUsers"/>
         <Button fx:id="loggedInUsersButton" text="Logged in users" onAction="#onLoggedInUsers"/>
     </HBox>

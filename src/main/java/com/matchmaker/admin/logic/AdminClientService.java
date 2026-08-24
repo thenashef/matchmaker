@@ -66,10 +66,6 @@ public class AdminClientService {
         runAsync(() -> adminConnection.listGameTypes(sessionToken), onSuccess, onError);
     }
 
-    public void addGameType(GameTypeDTO newGameType, Consumer<GameTypeDTO> onSuccess, Consumer<Throwable> onError) {
-        runAsync(() -> adminConnection.addGameType(sessionToken, newGameType), onSuccess, onError);
-    }
-
     public void listUsers(Consumer<List<UserDTO>> onSuccess, Consumer<Throwable> onError) {
         runAsync(() -> adminConnection.listUsers(sessionToken), onSuccess, onError);
     }

@@ -17,7 +17,6 @@ import com.matchmaker.server.dao.GameSessionDao;
 import com.matchmaker.server.dao.GameTypeDao;
 import com.matchmaker.server.dao.UserDao;
 import com.matchmaker.server.dao.UserRecord;
-import com.matchmaker.server.game.GameEngineRegistry;
 import com.matchmaker.server.jms.GameEventPublisher;
 import com.matchmaker.server.jms.JmsPublishException;
 import com.matchmaker.server.matchmaking.MatchmakingQueue;
@@ -42,13 +41,11 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
     private final GameSessionDao gameSessionDao;
     private final GameEventPublisher gameEventPublisher;
     private final MatchmakingQueue matchmakingQueue;
-    private final GameEngineRegistry gameEngines;
     private final Duration onlineLivenessWindow;
 
     public AdminServiceImpl(SessionManager sessionManager, UserDao userDao, GameTypeDao gameTypeDao,
                              GameSessionDao gameSessionDao, GameEventPublisher gameEventPublisher,
-                             MatchmakingQueue matchmakingQueue, GameEngineRegistry gameEngines,
-                             Duration onlineLivenessWindow)
+                             MatchmakingQueue matchmakingQueue, Duration onlineLivenessWindow)
             throws RemoteException {
         super();
         this.sessionManager = sessionManager;
@@ -57,7 +54,6 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
         this.gameSessionDao = gameSessionDao;
         this.gameEventPublisher = gameEventPublisher;
         this.matchmakingQueue = matchmakingQueue;
-        this.gameEngines = gameEngines;
         this.onlineLivenessWindow = onlineLivenessWindow;
     }
 
@@ -66,17 +62,6 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
         return gameTypeDao.findAll();
-    }
-
-    @Override
-    public GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)
-            throws RemoteException, AuthenticationException, NotAdminException {
-        requireAdmin(sessionToken);
-        if (!gameEngines.isRegistered(newGameType.getName())) {
-            throw new IllegalArgumentException(
-                    "No game engine is registered for '" + newGameType.getName() + "'");
-        }
-        return gameTypeDao.insert(newGameType);
     }
 
     @Override

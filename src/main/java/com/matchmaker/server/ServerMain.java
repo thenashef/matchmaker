@@ -91,7 +91,7 @@ public class ServerMain {
         PlayerServiceImpl playerService = new PlayerServiceImpl(sessionManager, gameSessionDao, gameTypeDao,
                 matchmakingQueue, gameEventPublisher, gameEngines, chatMessageDao, userDao);
         AdminServiceImpl adminService = new AdminServiceImpl(sessionManager, userDao, gameTypeDao,
-                gameSessionDao, gameEventPublisher, matchmakingQueue, gameEngines, DISCONNECT_TIMEOUT);
+                gameSessionDao, gameEventPublisher, matchmakingQueue, DISCONNECT_TIMEOUT);
 
         registry.rebind("AuthService", authService);
         registry.rebind("PlayerService", playerService);

@@ -25,9 +25,6 @@ public interface AdminConnection {
 
     List<GameTypeDTO> listGameTypes(String sessionToken) throws AuthenticationException, NotAdminException;
 
-    GameTypeDTO addGameType(String sessionToken, GameTypeDTO newGameType)
-            throws AuthenticationException, NotAdminException;
-
     List<UserDTO> listUsers(String sessionToken) throws AuthenticationException, NotAdminException;
 
     List<UserDTO> listOnlineUsers(String sessionToken) throws AuthenticationException, NotAdminException;

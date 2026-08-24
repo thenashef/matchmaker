@@ -85,8 +85,9 @@ mvn javafx:run -Padmin
 ```
 
 Log in with the `admin` seed account, or any user with `IsAdmin = TRUE` in the database.
-The admin dashboard lists users and active sessions, lets you add new game types, and can
-monitor or force-end a live session.
+The admin dashboard lists users and active sessions, and can monitor or force-end a live
+session. Playable games are seeded in the database (Checkers and Crazy Eights); admins
+cannot add new game types from the panel.
 
 ## Running the tests
 
