@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.rmi.server.UnicastRemoteObject;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -56,6 +57,46 @@ class AuthServiceImplTest {
 
         assertEquals("carol", result.getUser().getUsername());
         assertNotNull(result.getSessionToken());
+    }
+
+    @Test
+    void login_whileAlreadyLoggedIn_throwsAuthenticationException() throws Exception {
+        authService.register("carol", "password123");
+        authService.login("carol", "password123");
+
+        AuthenticationException thrown = assertThrows(AuthenticationException.class,
+                () -> authService.login("carol", "password123"));
+        assertEquals("This account is already logged in.", thrown.getMessage());
+    }
+
+    @Test
+    void login_afterLogout_succeedsAgain() throws Exception {
+        authService.register("carol", "password123");
+        String token = authService.login("carol", "password123").getSessionToken();
+        authService.logout(token);
+
+        LoginResultDTO again = authService.login("carol", "password123");
+        assertNotNull(again.getSessionToken());
+        assertNotEquals(token, again.getSessionToken());
+    }
+
+    @Test
+    void login_afterStaleSessionGoesQuiet_replacesTheOldSession() throws Exception {
+        SessionManager sessionManager = new SessionManager();
+        AuthServiceImpl shortWindow = new AuthServiceImpl(sessionManager, new InMemoryUserDao(),
+                Duration.ofMillis(20));
+        try {
+            shortWindow.register("carol", "password123");
+            String stale = shortWindow.login("carol", "password123").getSessionToken();
+
+            Thread.sleep(40);
+
+            LoginResultDTO again = shortWindow.login("carol", "password123");
+            assertNotNull(again.getSessionToken());
+            assertThrows(AuthenticationException.class, () -> shortWindow.keepAlive(stale));
+        } finally {
+            UnicastRemoteObject.unexportObject(shortWindow, true);
+        }
     }
 
     @Test

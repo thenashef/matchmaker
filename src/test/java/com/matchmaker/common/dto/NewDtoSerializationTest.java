@@ -78,6 +78,21 @@ class NewDtoSerializationTest {
     }
 
     @Test
+    void gameHistoryDTO_survivesSerializationRoundTrip() throws Exception {
+        LocalDateTime endTime = LocalDateTime.of(2026, 8, 24, 10, 15);
+        GameHistoryDTO original = new GameHistoryDTO(9, "Checkers", "bob", GameStatus.FINISHED, 1, endTime);
+
+        GameHistoryDTO restored = roundTrip(original);
+
+        assertEquals(original.getSessionId(), restored.getSessionId());
+        assertEquals(original.getGameTypeName(), restored.getGameTypeName());
+        assertEquals(original.getOpponentUsername(), restored.getOpponentUsername());
+        assertEquals(original.getStatus(), restored.getStatus());
+        assertEquals(original.getWinnerId(), restored.getWinnerId());
+        assertEquals(original.getEndTime(), restored.getEndTime());
+    }
+
+    @Test
     void adminDashboardStatsDTO_survivesSerializationRoundTrip() throws Exception {
         AdminDashboardStatsDTO original = new AdminDashboardStatsDTO(4, 2, 9, 1);
 

@@ -114,6 +114,24 @@ public class RmiJmsAdminConnection implements AdminConnection {
     }
 
     @Override
+    public List<UserDTO> listOnlineUsers(String sessionToken) throws AuthenticationException, NotAdminException {
+        try {
+            return adminService.listOnlineUsers(sessionToken);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("listOnlineUsers() failed", e);
+        }
+    }
+
+    @Override
+    public UserDTO promoteToAdmin(String sessionToken, int userId) throws AuthenticationException, NotAdminException {
+        try {
+            return adminService.promoteToAdmin(sessionToken, userId);
+        } catch (RemoteException e) {
+            throw new AdminCommunicationException("promoteToAdmin() failed", e);
+        }
+    }
+
+    @Override
     public UserDTO createUser(String sessionToken, String username, String password, boolean isAdmin)
             throws AuthenticationException, NotAdminException, UsernameTakenException, InvalidRegistrationException {
         try {

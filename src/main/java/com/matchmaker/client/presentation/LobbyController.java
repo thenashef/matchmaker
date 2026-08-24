@@ -1,9 +1,11 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
+import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -12,6 +14,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
@@ -24,6 +27,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,9 +40,12 @@ public class LobbyController {
             "-fx-background-color: #f7f1e8; -fx-background-radius: 8; -fx-border-radius: 8; "
                     + "-fx-border-color: gold; -fx-border-width: 3;";
     private static final int ICON_SIZE = 80;
+    private static final DateTimeFormatter HISTORY_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     @FXML private Label welcomeLabel;
     @FXML private Label ratingLabel;
+    @FXML private Button logoutButton;
     @FXML private FlowPane gameTypeTiles;
     @FXML private Label statusLabel;
     @FXML private TableView<LeaderboardRow> leaderboardTable;
@@ -46,6 +53,11 @@ public class LobbyController {
     @FXML private TableColumn<LeaderboardRow, String> usernameColumn;
     @FXML private TableColumn<LeaderboardRow, Number> ratingColumn;
     @FXML private TableColumn<LeaderboardRow, String> recordColumn;
+    @FXML private TableView<GameHistoryDTO> historyTable;
+    @FXML private TableColumn<GameHistoryDTO, String> historyGameColumn;
+    @FXML private TableColumn<GameHistoryDTO, String> historyOpponentColumn;
+    @FXML private TableColumn<GameHistoryDTO, String> historyResultColumn;
+    @FXML private TableColumn<GameHistoryDTO, String> historyWhenColumn;
 
     private GameClientService gameClientService;
     private SceneNavigator navigator;
@@ -62,6 +74,7 @@ public class LobbyController {
         ratingLabel.setText("");
 
         configureLeaderboardTable();
+        configureHistoryTable();
 
         gameClientService.getProfile(
                 this::showHeaderFromProfile,
@@ -72,6 +85,17 @@ public class LobbyController {
         gameClientService.listLeaderboard(
                 this::showLeaderboard,
                 error -> statusLabel.setText(error.getMessage()));
+        gameClientService.getHistory(
+                rows -> historyTable.getItems().setAll(rows),
+                error -> statusLabel.setText(error.getMessage()));
+    }
+
+    @FXML
+    private void onLogout() {
+        logoutButton.setDisable(true);
+        gameClientService.logout();
+        LoginController controller = navigator.show("LoginView.fxml", "MatchMaker - Login");
+        controller.init(gameClientService, navigator);
     }
 
     private void configureLeaderboardTable() {
@@ -100,9 +124,17 @@ public class LobbyController {
         });
     }
 
+    private void configureHistoryTable() {
+        historyGameColumn.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getGameTypeName()));
+        historyOpponentColumn.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getOpponentUsername()));
+        historyResultColumn.setCellValueFactory(data -> new SimpleStringProperty(formatHistoryResult(data.getValue())));
+        historyWhenColumn.setCellValueFactory(data -> new SimpleStringProperty(
+                data.getValue().getEndTime() == null ? "-" : HISTORY_TIME.format(data.getValue().getEndTime())));
+    }
+
     private void showHeaderFromProfile(UserDTO profile) {
         welcomeLabel.setText("Welcome, " + profile.getUsername());
-        ratingLabel.setText("Rating " + profile.getRating());
+        ratingLabel.setText(formatStats(profile));
     }
 
     private void showGameTypes(List<GameTypeDTO> gameTypes) {
@@ -125,7 +157,7 @@ public class LobbyController {
             users.stream()
                     .filter(user -> user.getId() == current.getId())
                     .findFirst()
-                    .ifPresent(self -> ratingLabel.setText("Rating " + self.getRating()));
+                    .ifPresent(self -> ratingLabel.setText(formatStats(self)));
         }
     }
 
@@ -249,6 +281,28 @@ public class LobbyController {
 
     private static String formatRecord(UserDTO user) {
         return user.getWins() + "/" + user.getLosses() + "/" + user.getDraws();
+    }
+
+    private static String formatStats(UserDTO user) {
+        int games = user.getWins() + user.getLosses() + user.getDraws();
+        if (games == 0) {
+            return "Starting rating " + user.getRating() + "   No games yet";
+        }
+        return "Rating " + user.getRating() + "   W/L/D " + formatRecord(user) + "   " + games + " games";
+    }
+
+    private String formatHistoryResult(GameHistoryDTO row) {
+        if (row.getStatus() == GameStatus.ABANDONED) {
+            return "Abandoned";
+        }
+        UserDTO current = gameClientService.getCurrentUser();
+        if (row.getWinnerId() == null) {
+            return "Draw";
+        }
+        if (current != null && row.getWinnerId() == current.getId()) {
+            return "Win";
+        }
+        return "Loss";
     }
 
     record LeaderboardRow(int rank, UserDTO user) {

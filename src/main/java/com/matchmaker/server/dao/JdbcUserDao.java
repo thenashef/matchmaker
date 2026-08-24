@@ -100,6 +100,22 @@ public class JdbcUserDao implements UserDao {
     }
 
     @Override
+    public Optional<UserRecord> setAdmin(int userId, boolean admin) {
+        String sql = "UPDATE User SET IsAdmin = ? WHERE ID = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setBoolean(1, admin);
+            stmt.setInt(2, userId);
+            if (stmt.executeUpdate() == 0) {
+                return Optional.empty();
+            }
+            return findById(conn, userId);
+        } catch (SQLException e) {
+            throw new DaoException("Failed to update admin flag for user " + userId, e);
+        }
+    }
+
+    @Override
     public Set<Integer> findAdminUserIds() {
         String sql = "SELECT ID FROM User WHERE IsAdmin = TRUE";
         Set<Integer> result = new HashSet<>();

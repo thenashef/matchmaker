@@ -3,6 +3,7 @@ package com.matchmaker.client.communication;
 import com.matchmaker.common.communication.ServerEventListener;
 import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
@@ -182,6 +183,15 @@ public class RmiJmsServerConnection implements ServerConnection {
             return playerService.rematch(sessionToken, finishedSessionId);
         } catch (RemoteException e) {
             throw new ServerCommunicationException("rematch() failed", e);
+        }
+    }
+
+    @Override
+    public List<GameHistoryDTO> getHistory(String sessionToken) throws AuthenticationException {
+        try {
+            return playerService.getHistory(sessionToken);
+        } catch (RemoteException e) {
+            throw new ServerCommunicationException("getHistory() failed", e);
         }
     }
 

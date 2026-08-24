@@ -10,22 +10,46 @@
       fx:controller="com.matchmaker.client.presentation.LobbyController"
       spacing="10" alignment="TOP_CENTER">
     <padding><Insets top="20" right="24" bottom="20" left="24"/></padding>
-    <HBox alignment="CENTER_LEFT" maxWidth="Infinity">
+    <HBox alignment="CENTER_LEFT" maxWidth="Infinity" spacing="12">
         <Label fx:id="welcomeLabel" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
         <Region HBox.hgrow="ALWAYS"/>
-        <Label fx:id="ratingLabel" style="-fx-font-size: 16px;"/>
+        <Label fx:id="ratingLabel" style="-fx-font-size: 14px;"/>
+        <Button fx:id="logoutButton" text="Logout" onAction="#onLogout"/>
     </HBox>
-    <Label text="Choose a game" style="-fx-font-size: 14px;"/>
-    <FlowPane fx:id="gameTypeTiles" hgap="16" vgap="16" alignment="CENTER"
-              prefHeight="240" maxHeight="240" maxWidth="Infinity"/>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="800"/>
-    <Label text="Leaderboard" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
-    <TableView fx:id="leaderboardTable" VBox.vgrow="ALWAYS" maxWidth="Infinity">
-        <columns>
-            <TableColumn fx:id="rankColumn" text="#" prefWidth="50"/>
-            <TableColumn fx:id="usernameColumn" text="Username" prefWidth="280"/>
-            <TableColumn fx:id="ratingColumn" text="Rating" prefWidth="100"/>
-            <TableColumn fx:id="recordColumn" text="W/L/D" prefWidth="120"/>
-        </columns>
-    </TableView>
+    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE" maxWidth="Infinity">
+        <Tab text="Play">
+            <VBox spacing="10" alignment="TOP_CENTER">
+                <padding><Insets top="10" right="0" bottom="0" left="0"/></padding>
+                <Label text="Choose a game" style="-fx-font-size: 14px;"/>
+                <FlowPane fx:id="gameTypeTiles" hgap="16" vgap="16" alignment="CENTER"
+                          prefHeight="240" maxHeight="240" maxWidth="Infinity"/>
+                <Label text="Leaderboard" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+                <TableView fx:id="leaderboardTable" VBox.vgrow="ALWAYS" maxWidth="Infinity">
+                    <columns>
+                        <TableColumn fx:id="rankColumn" text="#" prefWidth="50"/>
+                        <TableColumn fx:id="usernameColumn" text="Username" prefWidth="280"/>
+                        <TableColumn fx:id="ratingColumn" text="Rating" prefWidth="100"/>
+                        <TableColumn fx:id="recordColumn" text="W/L/D" prefWidth="120"/>
+                    </columns>
+                </TableView>
+            </VBox>
+        </Tab>
+        <Tab text="History">
+            <VBox spacing="10">
+                <padding><Insets top="10" right="0" bottom="0" left="0"/></padding>
+                <TableView fx:id="historyTable" VBox.vgrow="ALWAYS" maxWidth="Infinity">
+                    <columns>
+                        <TableColumn fx:id="historyGameColumn" text="Game" prefWidth="140"/>
+                        <TableColumn fx:id="historyOpponentColumn" text="Opponent" prefWidth="160"/>
+                        <TableColumn fx:id="historyResultColumn" text="Result" prefWidth="110"/>
+                        <TableColumn fx:id="historyWhenColumn" text="Ended" prefWidth="180"/>
+                    </columns>
+                    <placeholder>
+                        <Label text="No games played yet."/>
+                    </placeholder>
+                </TableView>
+            </VBox>
+        </Tab>
+    </TabPane>
 </VBox>

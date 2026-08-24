@@ -1,5 +1,6 @@
 package com.matchmaker.server.dao;
 
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameStatus;
@@ -49,6 +50,42 @@ public class JdbcGameSessionDao implements GameSessionDao {
             return result;
         } catch (SQLException e) {
             throw new DaoException("Failed to find finished sessions for user " + userId, e);
+        }
+    }
+
+    @Override
+    public List<GameHistoryDTO> findHistoryForUser(int userId) {
+        String sql = "SELECT gs.ID, gt.Name AS GameTypeName, "
+                + "CASE WHEN gs.Player1ID = ? THEN u2.Username ELSE u1.Username END AS OpponentUsername, "
+                + "gs.Status, gs.WinnerID, gs.EndTime "
+                + "FROM GameSession gs "
+                + "JOIN GameType gt ON gs.GameTypeID = gt.ID "
+                + "JOIN User u1 ON gs.Player1ID = u1.ID "
+                + "JOIN User u2 ON gs.Player2ID = u2.ID "
+                + "WHERE (gs.Player1ID = ? OR gs.Player2ID = ?) AND gs.Status IN ('FINISHED', 'ABANDONED') "
+                + "ORDER BY gs.EndTime DESC";
+        List<GameHistoryDTO> result = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, userId);
+            stmt.setInt(3, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Timestamp endTime = rs.getTimestamp("EndTime");
+                    Integer winnerId = (Integer) rs.getObject("WinnerID");
+                    result.add(new GameHistoryDTO(
+                            rs.getInt("ID"),
+                            rs.getString("GameTypeName"),
+                            rs.getString("OpponentUsername"),
+                            GameStatus.valueOf(rs.getString("Status")),
+                            winnerId,
+                            endTime == null ? null : endTime.toLocalDateTime()));
+                }
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new DaoException("Failed to find history for user " + userId, e);
         }
     }
 

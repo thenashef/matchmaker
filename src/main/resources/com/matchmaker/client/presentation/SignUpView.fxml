@@ -5,15 +5,16 @@
 <?import javafx.scene.layout.VBox?>
 
 <VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
-      fx:controller="com.matchmaker.client.presentation.LoginController"
+      fx:controller="com.matchmaker.client.presentation.SignUpController"
       spacing="12" alignment="CENTER">
     <padding><Insets top="40" right="40" bottom="40" left="40"/></padding>
-    <Label text="MatchMaker" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
+    <Label text="Sign up" style="-fx-font-size: 24px; -fx-font-weight: bold;"/>
     <TextField fx:id="usernameField" promptText="Username" maxWidth="240"/>
     <PasswordField fx:id="passwordField" promptText="Password" maxWidth="240"/>
+    <PasswordField fx:id="confirmPasswordField" promptText="Confirm password" maxWidth="240"/>
     <HBox spacing="10" alignment="CENTER">
-        <Button fx:id="loginButton" text="Login" onAction="#onLogin" defaultButton="true"/>
-        <Button fx:id="signUpButton" text="Sign up" onAction="#onSignUp"/>
+        <Button fx:id="signUpButton" text="Sign up" onAction="#onSignUp" defaultButton="true"/>
+        <Button fx:id="backButton" text="Back to Login" onAction="#onBackToLogin"/>
     </HBox>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true" maxWidth="280"/>
 </VBox>

@@ -1,5 +1,6 @@
 package com.matchmaker.server.dao;
 
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.enums.GameStatus;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,6 +54,34 @@ class GameSessionDaoTest {
         assertEquals(finishedSessionId, history.get(0).getSessionId());
         assertEquals(GameStatus.FINISHED, history.get(0).getStatus());
         assertEquals(player1Id, history.get(0).getWinnerId());
+    }
+
+    @Test
+    void findHistoryForUser_includesOpponentNameGameTypeAndEndTime() throws Exception {
+        int finishedSessionId = insertGameSession(gameTypeId, player1Id, player2Id, "FINISHED", player1Id);
+
+        List<GameHistoryDTO> history = gameSessionDao.findHistoryForUser(player1Id);
+
+        assertEquals(1, history.size());
+        assertEquals(finishedSessionId, history.get(0).getSessionId());
+        assertEquals("Checkers", history.get(0).getGameTypeName());
+        assertEquals("player2", history.get(0).getOpponentUsername());
+        assertEquals(GameStatus.FINISHED, history.get(0).getStatus());
+        assertEquals(player1Id, history.get(0).getWinnerId());
+        assertNotNull(history.get(0).getEndTime());
+    }
+
+    @Test
+    void findHistoryForUser_ordersMostRecentlyEndedFirst() throws Exception {
+        int older = insertGameSessionEndedSecondsAgo(gameTypeId, player1Id, player2Id, "FINISHED", player1Id, 60);
+        int newer = insertGameSessionEndedSecondsAgo(gameTypeId, player1Id, player2Id, "ABANDONED", player2Id, 5);
+
+        List<GameHistoryDTO> history = gameSessionDao.findHistoryForUser(player1Id);
+
+        assertEquals(2, history.size());
+        assertEquals(newer, history.get(0).getSessionId());
+        assertEquals(older, history.get(1).getSessionId());
+        assertEquals(GameStatus.ABANDONED, history.get(0).getStatus());
     }
 
     @Test
@@ -524,6 +554,30 @@ class GameSessionDaoTest {
             } else {
                 stmt.setNull(5, Types.INTEGER);
             }
+            stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                keys.next();
+                return keys.getInt(1);
+            }
+        }
+    }
+
+    private int insertGameSessionEndedSecondsAgo(int gameTypeId, int player1Id, int player2Id, String status,
+                                                 Integer winnerId, int secondsAgo) throws Exception {
+        String sql = "INSERT INTO GameSession (GameTypeID, Player1ID, Player2ID, Status, WinnerID, EndTime) "
+                + "VALUES (?, ?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? SECOND))";
+        try (Connection conn = DATA_SOURCE.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            stmt.setInt(1, gameTypeId);
+            stmt.setInt(2, player1Id);
+            stmt.setInt(3, player2Id);
+            stmt.setString(4, status);
+            if (winnerId != null) {
+                stmt.setInt(5, winnerId);
+            } else {
+                stmt.setNull(5, Types.INTEGER);
+            }
+            stmt.setInt(6, secondsAgo);
             stmt.executeUpdate();
             try (ResultSet keys = stmt.getGeneratedKeys()) {
                 keys.next();

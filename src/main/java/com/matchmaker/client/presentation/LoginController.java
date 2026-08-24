@@ -1,8 +1,6 @@
 package com.matchmaker.client.presentation;
 
 import com.matchmaker.client.logic.GameClientService;
-import com.matchmaker.common.exceptions.InvalidRegistrationException;
-import com.matchmaker.common.exceptions.UsernameTakenException;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -16,14 +14,23 @@ public class LoginController {
     @FXML private PasswordField passwordField;
     @FXML private Label statusLabel;
     @FXML private Button loginButton;
-    @FXML private Button registerButton;
+    @FXML private Button signUpButton;
 
     private GameClientService gameClientService;
     private SceneNavigator navigator;
 
     public void init(GameClientService gameClientService, SceneNavigator navigator) {
+        init(gameClientService, navigator, null, false);
+    }
+
+    public void init(GameClientService gameClientService, SceneNavigator navigator,
+                     String statusMessage, boolean success) {
         this.gameClientService = gameClientService;
         this.navigator = navigator;
+        if (statusMessage != null && !statusMessage.isBlank()) {
+            statusLabel.setTextFill(Color.web(success ? "#2e7d32" : "#b00020"));
+            statusLabel.setText(statusMessage);
+        }
     }
 
     @FXML
@@ -43,30 +50,13 @@ public class LoginController {
     }
 
     @FXML
-    private void onRegister() {
-        setControlsDisabled(true);
-        gameClientService.register(usernameField.getText(), passwordField.getText(),
-                user -> {
-                    setControlsDisabled(false);
-                    statusLabel.setTextFill(Color.web("#2e7d32"));
-                    statusLabel.setText("Registered -- now click Login.");
-                },
-                error -> {
-                    setControlsDisabled(false);
-                    statusLabel.setTextFill(Color.web("#b00020"));
-                    statusLabel.setText(friendlyRegisterErrorMessage(error));
-                });
-    }
-
-    private static String friendlyRegisterErrorMessage(Throwable error) {
-        if (error instanceof InvalidRegistrationException || error instanceof UsernameTakenException) {
-            return error.getMessage();
-        }
-        return "Registration failed -- please try again.";
+    private void onSignUp() {
+        SignUpController controller = navigator.show("SignUpView.fxml", "MatchMaker - Sign up");
+        controller.init(gameClientService, navigator, usernameField.getText());
     }
 
     private void setControlsDisabled(boolean disabled) {
         loginButton.setDisable(disabled);
-        registerButton.setDisable(disabled);
+        signUpButton.setDisable(disabled);
     }
 }

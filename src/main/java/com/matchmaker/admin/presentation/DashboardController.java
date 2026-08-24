@@ -28,6 +28,8 @@ public class DashboardController {
     @FXML private Button refreshButton;
     @FXML private Button newGameTypeButton;
     @FXML private Button usersButton;
+    @FXML private Button loggedInUsersButton;
+    @FXML private Button logoutButton;
     @FXML private Label statusLabel;
 
     private AdminClientService adminClientService;
@@ -78,6 +80,21 @@ public class DashboardController {
     @FXML
     private void onUsers() {
         UsersController controller = navigator.show("UsersView.fxml", "MatchMaker Admin - Users");
+        controller.init(adminClientService, navigator);
+    }
+
+    @FXML
+    private void onLoggedInUsers() {
+        LoggedInUsersController controller = navigator.show("LoggedInUsersView.fxml",
+                "MatchMaker Admin - Logged in users");
+        controller.init(adminClientService, navigator);
+    }
+
+    @FXML
+    private void onLogout() {
+        logoutButton.setDisable(true);
+        adminClientService.logout();
+        AdminLoginController controller = navigator.show("AdminLoginView.fxml", "MatchMaker Admin - Login");
         controller.init(adminClientService, navigator);
     }
 

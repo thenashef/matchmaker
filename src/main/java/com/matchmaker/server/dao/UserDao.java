@@ -15,4 +15,7 @@ public interface UserDao {
     Optional<UserRecord> findById(int id);
     List<UserRecord> findAll();
     Set<Integer> findAdminUserIds();
+
+    /** Empty if no user with that id exists. */
+    Optional<UserRecord> setAdmin(int userId, boolean admin);
 }

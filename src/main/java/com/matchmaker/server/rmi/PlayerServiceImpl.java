@@ -2,6 +2,7 @@ package com.matchmaker.server.rmi;
 
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
@@ -251,9 +252,9 @@ public class PlayerServiceImpl extends UnicastRemoteObject implements PlayerServ
     }
 
     @Override
-    public List<GameStateDTO> getHistory(String sessionToken) throws RemoteException, AuthenticationException {
+    public List<GameHistoryDTO> getHistory(String sessionToken) throws RemoteException, AuthenticationException {
         int userId = sessionManager.resolve(sessionToken);
-        return gameSessionDao.findFinishedSessionsForUser(userId);
+        return gameSessionDao.findHistoryForUser(userId);
     }
 
     @Override

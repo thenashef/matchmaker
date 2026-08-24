@@ -70,6 +70,26 @@ class AdminClientServiceTest {
     }
 
     @Test
+    void logout_clearsSessionButLeavesTheClientUsable() throws Exception {
+        UserDTO admin = new UserDTO(1, "admin", true, 0, 0, 0, 1200);
+        adminConnection.setLoginResult(new LoginResultDTO(admin, "token-1"));
+        this.<UserDTO>await(capture ->
+                service.login("admin", "pw", capture, () -> fail("should not be rejected"), err -> fail(String.valueOf(err))));
+
+        service.logout();
+
+        assertNull(service.getCurrentUser());
+        assertEquals(List.of("token-1"), adminConnection.loggedOutTokens());
+
+        adminConnection.setLoginResult(new LoginResultDTO(
+                new UserDTO(3, "otheradmin", true, 0, 0, 0, 1200), "token-3"));
+        UserDTO again = this.<UserDTO>await(capture ->
+                service.login("otheradmin", "pw", capture, () -> fail("should not be rejected"),
+                        err -> fail(String.valueOf(err))));
+        assertEquals(3, again.getId());
+    }
+
+    @Test
     void login_startsPeriodicKeepAlivePings() throws Exception {
         AdminClientService fastKeepAliveService = new AdminClientService(adminConnection, Duration.ofMillis(20));
         UserDTO admin = new UserDTO(1, "admin", true, 0, 0, 0, 1200);
@@ -152,6 +172,28 @@ class AdminClientServiceTest {
                 service.listUsers(capture, err -> fail(String.valueOf(err))));
 
         assertEquals(1, result.size());
+    }
+
+    @Test
+    void listOnlineUsers_success_returnsWhatConnectionReturns() throws Exception {
+        adminConnection.setOnlineUsers(List.of(new UserDTO(2, "player", false, 0, 0, 0, 1200)));
+
+        List<UserDTO> result = this.<List<UserDTO>>await(capture ->
+                service.listOnlineUsers(capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(1, result.size());
+        assertEquals("player", result.get(0).getUsername());
+    }
+
+    @Test
+    void promoteToAdmin_success_forwardsTheUserId() throws Exception {
+        adminConnection.setPromoteToAdminResult(new UserDTO(2, "player", true, 0, 0, 0, 1200));
+
+        UserDTO result = this.<UserDTO>await(capture ->
+                service.promoteToAdmin(2, capture, err -> fail(String.valueOf(err))));
+
+        assertTrue(result.isAdmin());
+        assertEquals(2, adminConnection.lastPromoteToAdminUserId());
     }
 
     @Test

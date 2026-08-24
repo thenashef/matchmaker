@@ -4,6 +4,7 @@ import com.matchmaker.common.communication.ServerEventListener;
 import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
@@ -51,6 +52,7 @@ public class InMemoryServerConnection implements ServerConnection {
     private AlreadyInGameException rematchAlreadyInGameFailure;
     private int lastRematchFinishedSessionId = -1;
     private List<UserDTO> leaderboard = new ArrayList<>();
+    private List<GameHistoryDTO> history = new ArrayList<>();
     private UserDTO profileResult;
     private UserDTO opponentProfileResult;
     private final AtomicInteger keepAliveCallCount = new AtomicInteger();
@@ -88,6 +90,7 @@ public class InMemoryServerConnection implements ServerConnection {
     public void setRematchAlreadyInGameFailure(AlreadyInGameException failure) { this.rematchAlreadyInGameFailure = failure; }
     public int lastRematchFinishedSessionId() { return lastRematchFinishedSessionId; }
     public void setLeaderboard(List<UserDTO> leaderboard) { this.leaderboard = leaderboard; }
+    public void setHistory(List<GameHistoryDTO> history) { this.history = history; }
     public void setProfileResult(UserDTO result) { this.profileResult = result; }
     public void setOpponentProfileResult(UserDTO result) { this.opponentProfileResult = result; }
     public boolean wasCancelQueueCalled() { return cancelQueueCalled; }
@@ -174,6 +177,11 @@ public class InMemoryServerConnection implements ServerConnection {
         if (rematchNotParticipantFailure != null) throw rematchNotParticipantFailure;
         if (rematchAlreadyInGameFailure != null) throw rematchAlreadyInGameFailure;
         return rematchResult;
+    }
+
+    @Override
+    public List<GameHistoryDTO> getHistory(String sessionToken) {
+        return history;
     }
 
     @Override

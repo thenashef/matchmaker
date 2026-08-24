@@ -74,6 +74,14 @@ public class AdminClientService {
         runAsync(() -> adminConnection.listUsers(sessionToken), onSuccess, onError);
     }
 
+    public void listOnlineUsers(Consumer<List<UserDTO>> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> adminConnection.listOnlineUsers(sessionToken), onSuccess, onError);
+    }
+
+    public void promoteToAdmin(int userId, Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> adminConnection.promoteToAdmin(sessionToken, userId), onSuccess, onError);
+    }
+
     public void createUser(String username, String password, boolean isAdmin,
                             Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
         runAsync(() -> adminConnection.createUser(sessionToken, username, password, isAdmin), onSuccess, onError);
@@ -109,16 +117,28 @@ public class AdminClientService {
         }
     }
 
-    public void shutdown() {
-        if (sessionToken != null) {
-            adminConnection.logout(sessionToken);
-            sessionToken = null;
-        }
+    /** Ends the current session so another account can log in on this client. Leaves the
+     *  connection and background executor running. */
+    public void logout() {
         stopMonitoring();
-        backgroundExecutor.shutdownNow();
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
+            keepAliveExecutor = null;
         }
+        if (sessionToken != null) {
+            try {
+                adminConnection.logout(sessionToken);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "logout() failed", e);
+            }
+            sessionToken = null;
+        }
+        currentUser = null;
+    }
+
+    public void shutdown() {
+        logout();
+        backgroundExecutor.shutdownNow();
     }
 
     private void startKeepAlive() {

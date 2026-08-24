@@ -1,6 +1,7 @@
 package com.matchmaker.server.rmi;
 
 import com.matchmaker.common.dto.ChatMessageDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
@@ -90,10 +91,14 @@ class PlayerServiceImplTest {
         GameStateDTO finished = new GameStateDTO(1, 1, 1, 2, GameStatus.FINISHED, null, 1, "board");
         gameSessionDao.addFinishedSession(finished);
 
-        List<GameStateDTO> history = playerService.getHistory(sessionToken);
+        List<GameHistoryDTO> history = playerService.getHistory(sessionToken);
 
         assertEquals(1, history.size());
         assertEquals(1, history.get(0).getSessionId());
+        assertEquals("user-2", history.get(0).getOpponentUsername());
+        assertEquals("game-type-1", history.get(0).getGameTypeName());
+        assertEquals(GameStatus.FINISHED, history.get(0).getStatus());
+        assertEquals(1, history.get(0).getWinnerId());
     }
 
     @Test

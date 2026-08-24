@@ -25,6 +25,7 @@ import com.matchmaker.server.matchmaking.MatchmakingQueue;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -83,6 +84,34 @@ public class AdminServiceImpl extends UnicastRemoteObject implements AdminServic
             throws RemoteException, AuthenticationException, NotAdminException {
         requireAdmin(sessionToken);
         return userDao.findAll().stream().map(UserRecord::toUserDTO).toList();
+    }
+
+    @Override
+    public List<UserDTO> listOnlineUsers(String sessionToken)
+            throws RemoteException, AuthenticationException, NotAdminException {
+        requireAdmin(sessionToken);
+        return sessionManager.onlineUserIds(onlineLivenessWindow).stream()
+                .map(userDao::findById)
+                .flatMap(Optional::stream)
+                .sorted(Comparator.comparing(UserRecord::username, String.CASE_INSENSITIVE_ORDER)
+                        .thenComparingInt(UserRecord::id))
+                .map(UserRecord::toUserDTO)
+                .toList();
+    }
+
+    @Override
+    public UserDTO promoteToAdmin(String sessionToken, int userId)
+            throws RemoteException, AuthenticationException, NotAdminException {
+        UserRecord actingAdmin = requireAdmin(sessionToken);
+        UserRecord existing = userDao.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("No such user " + userId));
+        if (existing.admin()) {
+            return existing.toUserDTO();
+        }
+        UserRecord updated = userDao.setAdmin(userId, true)
+                .orElseThrow(() -> new IllegalArgumentException("No such user " + userId));
+        LOG.log(Level.INFO, "User '" + updated.username() + "' promoted to admin by admin user " + actingAdmin.id());
+        return updated.toUserDTO();
     }
 
     @Override

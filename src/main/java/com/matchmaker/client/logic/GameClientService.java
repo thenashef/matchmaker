@@ -4,6 +4,7 @@ import com.matchmaker.client.communication.ServerConnection;
 import com.matchmaker.common.communication.Subscription;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
@@ -165,6 +166,10 @@ public class GameClientService {
                 onError);
     }
 
+    public void getHistory(Consumer<List<GameHistoryDTO>> onSuccess, Consumer<Throwable> onError) {
+        runAsync(() -> serverConnection.getHistory(sessionToken), onSuccess, onError);
+    }
+
     public void getProfile(Consumer<UserDTO> onSuccess, Consumer<Throwable> onError) {
         runAsync(() -> serverConnection.getProfile(sessionToken),
                 result -> {
@@ -188,21 +193,34 @@ public class GameClientService {
         currentGameState = null;
     }
 
-    public void shutdown() {
+    /** Ends the current session so another account can log in on this client. Leaves the
+     *  connection and background executor running. */
+    public void logout() {
         leaveGame();
         rematchListener = null;
+        pendingMatchCallback = null;
         if (playerQueueSubscription != null) {
             playerQueueSubscription.close();
             playerQueueSubscription = null;
         }
-        if (sessionToken != null) {
-            serverConnection.logout(sessionToken);
-            sessionToken = null;
-        }
-        backgroundExecutor.shutdownNow();
         if (keepAliveExecutor != null) {
             keepAliveExecutor.shutdownNow();
+            keepAliveExecutor = null;
         }
+        if (sessionToken != null) {
+            try {
+                serverConnection.logout(sessionToken);
+            } catch (RuntimeException e) {
+                LOG.log(Level.WARNING, "logout() failed", e);
+            }
+            sessionToken = null;
+        }
+        currentUser = null;
+    }
+
+    public void shutdown() {
+        logout();
+        backgroundExecutor.shutdownNow();
     }
 
     private void abortFailedLogin() {

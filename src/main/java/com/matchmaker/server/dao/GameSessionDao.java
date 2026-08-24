@@ -1,5 +1,6 @@
 package com.matchmaker.server.dao;
 
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.exceptions.AlreadyInGameException;
@@ -10,6 +11,8 @@ import java.util.Optional;
 
 public interface GameSessionDao {
     List<GameStateDTO> findFinishedSessionsForUser(int userId);
+
+    List<GameHistoryDTO> findHistoryForUser(int userId);
 
     Optional<GameStateDTO> findActiveById(int sessionId);
 

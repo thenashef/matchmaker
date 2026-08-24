@@ -1,5 +1,6 @@
 package com.matchmaker.server;
 
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameEventType;
@@ -190,6 +191,11 @@ class SessionWatchdogTest {
         @Override
         public List<GameStateDTO> findFinishedSessionsForUser(int userId) {
             return delegate.findFinishedSessionsForUser(userId);
+        }
+
+        @Override
+        public List<GameHistoryDTO> findHistoryForUser(int userId) {
+            return delegate.findHistoryForUser(userId);
         }
 
         @Override

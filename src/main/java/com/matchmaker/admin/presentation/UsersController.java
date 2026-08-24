@@ -11,10 +11,12 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.TableCell;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.paint.Color;
+import javafx.util.Callback;
 
 public class UsersController {
 
@@ -24,6 +26,7 @@ public class UsersController {
     @FXML private TableColumn<UserDTO, String> adminColumn;
     @FXML private TableColumn<UserDTO, Number> ratingColumn;
     @FXML private TableColumn<UserDTO, String> recordColumn;
+    @FXML private TableColumn<UserDTO, Void> promoteColumn;
     @FXML private TextField newUsernameField;
     @FXML private PasswordField newPasswordField;
     @FXML private CheckBox newIsAdminCheckBox;
@@ -44,6 +47,7 @@ public class UsersController {
         ratingColumn.setCellValueFactory(data -> new SimpleIntegerProperty(data.getValue().getRating()));
         recordColumn.setCellValueFactory(data -> new SimpleStringProperty(
                 data.getValue().getWins() + "/" + data.getValue().getLosses() + "/" + data.getValue().getDraws()));
+        promoteColumn.setCellFactory(promoteButtonCellFactory());
 
         reloadTable();
     }
@@ -98,6 +102,23 @@ public class UsersController {
                 });
     }
 
+    private void confirmPromote(UserDTO user) {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
+                "Promote '" + user.getUsername() + "' to admin? Admins can read every session's chat "
+                        + "and force-end any game.", ButtonType.YES, ButtonType.NO);
+        confirmation.showAndWait().ifPresent(response -> {
+            if (response == ButtonType.YES) {
+                adminClientService.promoteToAdmin(user.getId(),
+                        promoted -> {
+                            statusLabel.setTextFill(Color.web("#2e7d32"));
+                            statusLabel.setText("Promoted '" + promoted.getUsername() + "' to admin.");
+                            reloadTable();
+                        },
+                        error -> showError(error.getMessage()));
+            }
+        });
+    }
+
     private void showError(String message) {
         statusLabel.setTextFill(Color.web("#b00020"));
         statusLabel.setText(message);
@@ -107,5 +128,27 @@ public class UsersController {
     private void onBackToDashboard() {
         DashboardController controller = navigator.show("DashboardView.fxml", "MatchMaker Admin - Dashboard");
         controller.init(adminClientService, navigator);
+    }
+
+    private Callback<TableColumn<UserDTO, Void>, TableCell<UserDTO, Void>> promoteButtonCellFactory() {
+        return column -> new TableCell<>() {
+            private final Button promoteButton = new Button("Promote");
+
+            {
+                promoteButton.setOnAction(event -> confirmPromote(getTableView().getItems().get(getIndex())));
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
+                    setGraphic(null);
+                    return;
+                }
+                UserDTO user = getTableView().getItems().get(getIndex());
+                promoteButton.setDisable(user.isAdmin());
+                setGraphic(promoteButton);
+            }
+        };
     }
 }

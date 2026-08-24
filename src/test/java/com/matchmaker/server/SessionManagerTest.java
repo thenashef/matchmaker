@@ -122,6 +122,21 @@ class SessionManagerTest {
     }
 
     @Test
+    void invalidateAllForUser_dropsEveryTokenForThatUser() throws Exception {
+        SessionManager sessionManager = new SessionManager();
+        String tokenA = sessionManager.createSession(42);
+        String tokenB = sessionManager.createSession(42);
+        String other = sessionManager.createSession(7);
+
+        sessionManager.invalidateAllForUser(42);
+
+        assertThrows(AuthenticationException.class, () -> sessionManager.resolve(tokenA));
+        assertThrows(AuthenticationException.class, () -> sessionManager.resolve(tokenB));
+        assertEquals(7, sessionManager.resolve(other));
+        assertTrue(sessionManager.lastSeen(42).isEmpty());
+    }
+
+    @Test
     void invalidate_unknownToken_isANoOp() {
         SessionManager sessionManager = new SessionManager();
 

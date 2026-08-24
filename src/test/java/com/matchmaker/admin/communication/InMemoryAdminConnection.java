@@ -27,6 +27,7 @@ public class InMemoryAdminConnection implements AdminConnection {
     private List<GameTypeDTO> gameTypes = new ArrayList<>();
     private GameTypeDTO addGameTypeResult;
     private List<UserDTO> users = new ArrayList<>();
+    private List<UserDTO> onlineUsers = new ArrayList<>();
     private List<GameStateDTO> activeSessions = new ArrayList<>();
     private boolean forceEndSessionCalled = false;
     private NotAdminException notAdminFailure;
@@ -34,6 +35,8 @@ public class InMemoryAdminConnection implements AdminConnection {
     private List<MoveDTO> moves = new ArrayList<>();
     private int lastListMovesSessionId = -1;
     private UserDTO createUserResult;
+    private UserDTO promoteToAdminResult;
+    private int lastPromoteToAdminUserId = -1;
     private UsernameTakenException createUserUsernameTakenFailure;
     private InvalidRegistrationException createUserInvalidRegistrationFailure;
     private String lastCreateUserUsername;
@@ -50,12 +53,15 @@ public class InMemoryAdminConnection implements AdminConnection {
     public void setGameTypes(List<GameTypeDTO> gameTypes) { this.gameTypes = gameTypes; }
     public void setAddGameTypeResult(GameTypeDTO result) { this.addGameTypeResult = result; }
     public void setUsers(List<UserDTO> users) { this.users = users; }
+    public void setOnlineUsers(List<UserDTO> onlineUsers) { this.onlineUsers = onlineUsers; }
     public void setActiveSessions(List<GameStateDTO> activeSessions) { this.activeSessions = activeSessions; }
     public void setNotAdminFailure(NotAdminException failure) { this.notAdminFailure = failure; }
     public void setDashboardStats(AdminDashboardStatsDTO stats) { this.dashboardStats = stats; }
     public void setMoves(List<MoveDTO> moves) { this.moves = moves; }
     public int lastListMovesSessionId() { return lastListMovesSessionId; }
     public void setCreateUserResult(UserDTO result) { this.createUserResult = result; }
+    public void setPromoteToAdminResult(UserDTO result) { this.promoteToAdminResult = result; }
+    public int lastPromoteToAdminUserId() { return lastPromoteToAdminUserId; }
     public void setCreateUserUsernameTakenFailure(UsernameTakenException failure) { this.createUserUsernameTakenFailure = failure; }
     public void setCreateUserInvalidRegistrationFailure(InvalidRegistrationException failure) { this.createUserInvalidRegistrationFailure = failure; }
     public String lastCreateUserUsername() { return lastCreateUserUsername; }
@@ -99,6 +105,19 @@ public class InMemoryAdminConnection implements AdminConnection {
     public List<UserDTO> listUsers(String sessionToken) throws NotAdminException {
         if (notAdminFailure != null) throw notAdminFailure;
         return users;
+    }
+
+    @Override
+    public List<UserDTO> listOnlineUsers(String sessionToken) throws NotAdminException {
+        if (notAdminFailure != null) throw notAdminFailure;
+        return onlineUsers;
+    }
+
+    @Override
+    public UserDTO promoteToAdmin(String sessionToken, int userId) throws NotAdminException {
+        lastPromoteToAdminUserId = userId;
+        if (notAdminFailure != null) throw notAdminFailure;
+        return promoteToAdminResult;
     }
 
     @Override

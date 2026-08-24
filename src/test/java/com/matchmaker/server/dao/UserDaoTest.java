@@ -115,4 +115,20 @@ class UserDaoTest {
 
         assertEquals(2, all.size());
     }
+
+    @Test
+    void setAdmin_existingUser_persistsTheFlag() {
+        int id = userDao.insert("alice", "hash").get().id();
+
+        Optional<UserRecord> updated = userDao.setAdmin(id, true);
+
+        assertTrue(updated.isPresent());
+        assertTrue(updated.get().admin());
+        assertTrue(userDao.findById(id).get().admin(), "the flag must actually be persisted, not just returned");
+    }
+
+    @Test
+    void setAdmin_unknownId_returnsEmpty() {
+        assertTrue(userDao.setAdmin(999999, true).isEmpty());
+    }
 }

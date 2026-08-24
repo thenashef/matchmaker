@@ -52,11 +52,24 @@ public class InMemoryUserDao implements UserDao {
         return result;
     }
 
+    @Override
+    public synchronized Optional<UserRecord> setAdmin(int userId, boolean admin) {
+        Optional<UserRecord> found = findById(userId);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        UserRecord updated = withAdmin(found.get(), admin);
+        usersByUsername.put(updated.username(), updated);
+        return Optional.of(updated);
+    }
+
     public synchronized void markAdmin(int userId) {
-        usersByUsername.replaceAll((username, record) -> record.id() == userId
-                ? new UserRecord(record.id(), record.username(), record.passwordHash(), true,
-                        record.wins(), record.losses(), record.draws(), record.rating(), record.createdAt())
-                : record);
+        setAdmin(userId, true);
+    }
+
+    private static UserRecord withAdmin(UserRecord record, boolean admin) {
+        return new UserRecord(record.id(), record.username(), record.passwordHash(), admin,
+                record.wins(), record.losses(), record.draws(), record.rating(), record.createdAt());
     }
 
     public synchronized void setStats(int userId, int wins, int losses, int draws, int rating) {

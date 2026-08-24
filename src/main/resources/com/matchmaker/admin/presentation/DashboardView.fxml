@@ -2,13 +2,24 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
 <VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
       fx:controller="com.matchmaker.admin.presentation.DashboardController"
       spacing="10">
     <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
-    <Label text="Dashboard" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <HBox alignment="CENTER_LEFT" spacing="12">
+        <Label text="Dashboard" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button fx:id="logoutButton" text="Logout" onAction="#onLogout"/>
+    </HBox>
+    <HBox spacing="10">
+        <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
+        <Button fx:id="newGameTypeButton" text="New Game Type" onAction="#onNewGameType"/>
+        <Button fx:id="usersButton" text="Users" onAction="#onUsers"/>
+        <Button fx:id="loggedInUsersButton" text="Logged in users" onAction="#onLoggedInUsers"/>
+    </HBox>
     <HBox spacing="20">
         <Label fx:id="onlinePlayersLabel"/>
         <Label fx:id="activeGamesLabel"/>
@@ -26,10 +37,5 @@
             <TableColumn fx:id="monitorColumn" text="" prefWidth="100"/>
         </columns>
     </TableView>
-    <HBox spacing="10">
-        <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
-        <Button fx:id="newGameTypeButton" text="New Game Type" onAction="#onNewGameType"/>
-        <Button fx:id="usersButton" text="Users" onAction="#onUsers"/>
-    </HBox>
     <Label fx:id="statusLabel" textFill="#b00020" wrapText="true"/>
 </VBox>

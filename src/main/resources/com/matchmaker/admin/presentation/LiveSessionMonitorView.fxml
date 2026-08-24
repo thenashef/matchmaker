@@ -13,19 +13,16 @@
             <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
             <Label fx:id="titleLabel" style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
             <Label fx:id="detailLabel" style="-fx-font-size: 13px;"/>
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <Button fx:id="forceEndButton" text="Force End Session" onAction="#onForceEndSession"/>
+                <Button fx:id="exportLogButton" text="Export Log" onAction="#onExportLog"/>
+                <Button fx:id="backButton" text="Back to Dashboard" onAction="#onBackToDashboard"/>
+            </HBox>
         </VBox>
     </top>
     <center>
         <GridPane fx:id="boardGrid" alignment="CENTER" prefWidth="400.0" prefHeight="400.0">
-            <BorderPane.margin><Insets top="10" right="10" bottom="10" left="10"/></BorderPane.margin>
+            <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
         </GridPane>
     </center>
-    <bottom>
-        <HBox spacing="10" alignment="CENTER">
-            <BorderPane.margin><Insets top="10" right="10" bottom="20" left="10"/></BorderPane.margin>
-            <Button fx:id="forceEndButton" text="Force End Session" onAction="#onForceEndSession"/>
-            <Button fx:id="exportLogButton" text="Export Log" onAction="#onExportLog"/>
-            <Button fx:id="backButton" text="Back to Dashboard" onAction="#onBackToDashboard"/>
-        </HBox>
-    </bottom>
 </BorderPane>

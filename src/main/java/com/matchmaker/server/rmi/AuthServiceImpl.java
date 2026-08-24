@@ -12,17 +12,27 @@ import com.matchmaker.server.dao.UserRecord;
 
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
+import java.time.Duration;
 import java.util.Optional;
 
 public class AuthServiceImpl extends UnicastRemoteObject implements AuthService {
 
+    private static final Duration DEFAULT_LIVE_SESSION_WINDOW = Duration.ofSeconds(60);
+
     private final SessionManager sessionManager;
     private final UserDao userDao;
+    private final Duration liveSessionWindow;
 
     public AuthServiceImpl(SessionManager sessionManager, UserDao userDao) throws RemoteException {
+        this(sessionManager, userDao, DEFAULT_LIVE_SESSION_WINDOW);
+    }
+
+    AuthServiceImpl(SessionManager sessionManager, UserDao userDao, Duration liveSessionWindow)
+            throws RemoteException {
         super();
         this.sessionManager = sessionManager;
         this.userDao = userDao;
+        this.liveSessionWindow = liveSessionWindow;
     }
 
     @Override
@@ -44,6 +54,10 @@ public class AuthServiceImpl extends UnicastRemoteObject implements AuthService 
             throw new AuthenticationException("Invalid username or password");
         }
         UserRecord record = found.get();
+        if (sessionManager.onlineUserIds(liveSessionWindow).contains(record.id())) {
+            throw new AuthenticationException("This account is already logged in.");
+        }
+        sessionManager.invalidateAllForUser(record.id());
         String token = sessionManager.createSession(record.id());
         return new LoginResultDTO(record.toUserDTO(), token);
     }

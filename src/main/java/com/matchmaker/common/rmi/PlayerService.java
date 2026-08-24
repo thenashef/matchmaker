@@ -1,6 +1,7 @@
 package com.matchmaker.common.rmi;
 
 import com.matchmaker.common.dto.ChatMessageDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.GameTypeDTO;
 import com.matchmaker.common.dto.UserDTO;
@@ -45,7 +46,7 @@ public interface PlayerService extends Remote {
     GameStateDTO rematch(String sessionToken, int finishedSessionId)
         throws RemoteException, AuthenticationException, NotParticipantException, AlreadyInGameException;
 
-    List<GameStateDTO> getHistory(String sessionToken)
+    List<GameHistoryDTO> getHistory(String sessionToken)
         throws RemoteException, AuthenticationException;
 
     /** Players ranked by rating, then wins, then username. Includes admin accounts; strips IsAdmin. */

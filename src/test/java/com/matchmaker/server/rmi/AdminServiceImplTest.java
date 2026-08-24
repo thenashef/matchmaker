@@ -119,6 +119,46 @@ class AdminServiceImplTest {
     }
 
     @Test
+    void listOnlineUsers_asAdmin_returnsLiveSessionsIncludingAdmins() throws Exception {
+        List<UserDTO> result = adminService.listOnlineUsers(adminToken);
+
+        assertEquals(2, result.size());
+        assertTrue(result.stream().anyMatch(user -> user.getId() == adminUserId && user.isAdmin()));
+        assertTrue(result.stream().anyMatch(user -> user.getId() == playerUserId && !user.isAdmin()));
+    }
+
+    @Test
+    void listOnlineUsers_asNonAdmin_throwsNotAdminException() {
+        assertThrows(NotAdminException.class, () -> adminService.listOnlineUsers(playerToken));
+    }
+
+    @Test
+    void promoteToAdmin_asAdmin_flipsTheFlag() throws Exception {
+        UserDTO promoted = adminService.promoteToAdmin(adminToken, playerUserId);
+
+        assertTrue(promoted.isAdmin());
+        assertTrue(userDao.findById(playerUserId).get().admin());
+    }
+
+    @Test
+    void promoteToAdmin_alreadyAdmin_returnsUnchanged() throws Exception {
+        UserDTO result = adminService.promoteToAdmin(adminToken, adminUserId);
+
+        assertTrue(result.isAdmin());
+        assertEquals(adminUserId, result.getId());
+    }
+
+    @Test
+    void promoteToAdmin_unknownUser_throwsIllegalArgumentException() {
+        assertThrows(IllegalArgumentException.class, () -> adminService.promoteToAdmin(adminToken, 999999));
+    }
+
+    @Test
+    void promoteToAdmin_asNonAdmin_throwsNotAdminException() {
+        assertThrows(NotAdminException.class, () -> adminService.promoteToAdmin(playerToken, playerUserId));
+    }
+
+    @Test
     void createUser_asAdmin_insertsAndReturnsCreated() throws Exception {
         // A 6-char password: clears the player floor but not the 12-char admin floor, so this also
         // pins that regular accounts aren't held to the stricter admin requirement.

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+      fx:controller="com.matchmaker.admin.presentation.LoggedInUsersController"
+      spacing="10">
+    <padding><Insets top="20" right="20" bottom="20" left="20"/></padding>
+    <Label text="Logged in users" style="-fx-font-size: 20px; -fx-font-weight: bold;"/>
+    <HBox spacing="10">
+        <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
+        <Button fx:id="backButton" text="Back to Dashboard" onAction="#onBackToDashboard"/>
+    </HBox>
+    <TableView fx:id="onlineUsersTable" VBox.vgrow="ALWAYS">
+        <columns>
+            <TableColumn fx:id="usernameColumn" text="Username" prefWidth="200"/>
+            <TableColumn fx:id="adminColumn" text="Admin" prefWidth="80"/>
+            <TableColumn fx:id="ratingColumn" text="Rating" prefWidth="90"/>
+            <TableColumn fx:id="recordColumn" text="W/L/D" prefWidth="100"/>
+        </columns>
+        <placeholder>
+            <Label text="No one is logged in."/>
+        </placeholder>
+    </TableView>
+    <Label fx:id="statusLabel" textFill="#b00020" wrapText="true"/>
+</VBox>

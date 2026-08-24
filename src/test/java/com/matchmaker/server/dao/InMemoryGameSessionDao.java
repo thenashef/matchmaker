@@ -1,5 +1,6 @@
 package com.matchmaker.server.dao;
 
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.MoveDTO;
 import com.matchmaker.common.enums.GameStatus;
@@ -53,6 +54,22 @@ public class InMemoryGameSessionDao implements GameSessionDao {
             if (isParticipant && isFinished) {
                 result.add(session);
             }
+        }
+        return result;
+    }
+
+    @Override
+    public List<GameHistoryDTO> findHistoryForUser(int userId) {
+        List<GameHistoryDTO> result = new ArrayList<>();
+        for (GameStateDTO session : findFinishedSessionsForUser(userId)) {
+            int opponentId = session.getPlayer1Id() == userId ? session.getPlayer2Id() : session.getPlayer1Id();
+            result.add(new GameHistoryDTO(
+                    session.getSessionId(),
+                    "game-type-" + session.getGameTypeId(),
+                    "user-" + opponentId,
+                    session.getStatus(),
+                    session.getWinnerId(),
+                    null));
         }
         return result;
     }

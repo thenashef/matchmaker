@@ -30,6 +30,10 @@ public interface AdminConnection {
 
     List<UserDTO> listUsers(String sessionToken) throws AuthenticationException, NotAdminException;
 
+    List<UserDTO> listOnlineUsers(String sessionToken) throws AuthenticationException, NotAdminException;
+
+    UserDTO promoteToAdmin(String sessionToken, int userId) throws AuthenticationException, NotAdminException;
+
     UserDTO createUser(String sessionToken, String username, String password, boolean isAdmin)
             throws AuthenticationException, NotAdminException, UsernameTakenException, InvalidRegistrationException;
 

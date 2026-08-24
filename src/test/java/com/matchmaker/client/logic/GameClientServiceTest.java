@@ -3,6 +3,7 @@ package com.matchmaker.client.logic;
 import com.matchmaker.client.communication.InMemoryServerConnection;
 import com.matchmaker.common.dto.ChatMessageDTO;
 import com.matchmaker.common.dto.GameEventDTO;
+import com.matchmaker.common.dto.GameHistoryDTO;
 import com.matchmaker.common.dto.GameStateDTO;
 import com.matchmaker.common.dto.LoginResultDTO;
 import com.matchmaker.common.dto.UserDTO;
@@ -183,6 +184,23 @@ class GameClientServiceTest {
     }
 
     @Test
+    void logout_clearsSessionAndUnsubscribesButLeavesTheClientUsable() throws Exception {
+        loginAsUser(1);
+
+        service.logout();
+
+        assertNull(service.getCurrentUser());
+        assertEquals(List.of("token-1"), serverConnection.loggedOutTokens());
+        assertFalse(serverConnection.isSubscribedToPlayerQueue(1));
+
+        serverConnection.setLoginResult(new LoginResultDTO(
+                new UserDTO(2, "user2", false, 0, 0, 0, 1000), "token-2"));
+        UserDTO again = await(capture -> service.login("user2", "pw", capture, err -> fail(String.valueOf(err))));
+        assertEquals(2, again.getId());
+        assertTrue(serverConnection.isSubscribedToPlayerQueue(2));
+    }
+
+    @Test
     void makeMove_success_updatesCurrentGameStateAndReachesOnSuccess() throws Exception {
         loginAsUser(1);
         GameStateDTO updated = new GameStateDTO(5, 1, 1, 2, GameStatus.ACTIVE, 2, null, "{\"pieces\":{}}");
@@ -327,6 +345,20 @@ class GameClientServiceTest {
 
         assertEquals(1240, result.getRating());
         assertEquals(1240, service.getCurrentUser().getRating(), "getProfile must refresh the cached currentUser");
+    }
+
+    @Test
+    void getHistory_success_returnsWhatConnectionReturns() throws Exception {
+        loginAsUser(1);
+        GameHistoryDTO row = new GameHistoryDTO(9, "Checkers", "bob", GameStatus.FINISHED, 1,
+                java.time.LocalDateTime.of(2026, 8, 24, 10, 0));
+        serverConnection.setHistory(List.of(row));
+
+        List<GameHistoryDTO> result = await(capture -> service.getHistory(capture, err -> fail(String.valueOf(err))));
+
+        assertEquals(1, result.size());
+        assertEquals(9, result.get(0).getSessionId());
+        assertEquals("bob", result.get(0).getOpponentUsername());
     }
 
     @Test

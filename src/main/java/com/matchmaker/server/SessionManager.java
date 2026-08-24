@@ -35,6 +35,11 @@ public class SessionManager {
         return token;
     }
 
+    public void invalidateAllForUser(int userId) {
+        sessionByToken.entrySet().removeIf(entry -> entry.getValue().userId() == userId);
+        lastSeenByUserId.remove(userId);
+    }
+
     public int resolve(String token) throws AuthenticationException {
         if (token == null) {
             throw new AuthenticationException("Invalid or expired session token");

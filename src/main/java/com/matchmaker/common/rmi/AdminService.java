@@ -24,6 +24,12 @@ public interface AdminService extends Remote {
     List<UserDTO> listUsers(String sessionToken)
         throws RemoteException, AuthenticationException, NotAdminException;
 
+    List<UserDTO> listOnlineUsers(String sessionToken)
+        throws RemoteException, AuthenticationException, NotAdminException;
+
+    UserDTO promoteToAdmin(String sessionToken, int userId)
+        throws RemoteException, AuthenticationException, NotAdminException;
+
     UserDTO createUser(String sessionToken, String username, String password, boolean isAdmin)
         throws RemoteException, AuthenticationException, NotAdminException, UsernameTakenException,
                InvalidRegistrationException;
